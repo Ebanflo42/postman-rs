@@ -296,7 +296,7 @@ impl RootedSubGraphForest {
 fn contract_blossom(
     graph: &Graph,
     matching: &EdgeList,
-    blossom: Vec<usize>,
+    blossom: &Vec<usize>,
 ) -> (Graph, EdgeList, usize) {
     // assume the first vertex in the blossom is unmatched
     // the blossom passed to this function should always satisfy this assumption
@@ -363,128 +363,134 @@ fn expand_blossom(
     blossom: &Vec<usize>,
     blossom_root: usize,
 ) -> Vec<usize> {
-    let blossom_contains = |v: usize| blossom.iter().any(|u| *u == v);
-
     if let Some(i) = path.iter().position(|v| *v == blossom_root) {
-        if i == 0 {
-            path
-        } else if i == path.len() - 1 {
-            path
+        // if the path passes through the blossom, there are two ways to expand the path
+        // and we have to carefully choose the one which ensures that the resulting path
+        // is still alternating
+        // begin by cutting the path into the segments before and after the blossom
+        let mut first_segment = if i > 0 {
+            Vec::from(&path[..i])
         } else {
-            // if the path passes through the blossom, there are two ways to expand the path
-            // and we have to carefully choose the one which ensures that the resulting path
-            // is still alternating
-            let mut first_segment = Vec::from(&path[..i]);
+            Vec::new()
+        };
+        let second_segment = if i < path.len() - 1 {
+            Vec::from(&path[(i + 1)..])
+        } else {
+            Vec::new()
+        };
+        let incoming_vert = *first_segment.last().unwrap();
+        let outgoing_vert = second_segment[0];
+
+        // determine if the edge going into the blossom is in the matching
+        // or if the blossom is the first node in the path
+        let incoming_edge_matched = if i == 0 {
+            true
+        } else if i == path.len() - 1 {
+            false
+        } else {
             let incoming_vert = *first_segment.last().unwrap();
-            let second_segment = Vec::from(&path[(i + 1)..]);
-            let outgoing_vert = second_segment[0];
+            contracted_matching
+                .iter()
+                .any(|e| *e == (incoming_vert, blossom_root) || *e == (blossom_root, incoming_vert))
+        };
 
-            let incoming_edge_matched = contracted_matching.iter().any(|e| {
-                *e == (incoming_vert, blossom_root) || *e == (blossom_root, incoming_vert)
-            });
-
-            if incoming_edge_matched {
-                let outgoing_blossom_vert_idx =
+        if incoming_edge_matched {
+            let outgoing_blossom_vert_idx =
                     match blossom.into_iter().position(|v| original_graph.adjacency_list[outgoing_vert].contains(v)) {
                         Some(i) => i,
                         None => panic!("Original graph adjacency list did not find a blossom vertex for incoming vertex.")
                     };
-                let outgoing_blossom_vert = blossom[outgoing_blossom_vert_idx];
+            let outgoing_blossom_vert = blossom[outgoing_blossom_vert_idx];
 
-                // absolutely obnoxious case analysis here
-                for edge in original_matching.into_iter() {
-                    if edge.0 == outgoing_blossom_vert {
-                        if edge.1 == blossom[(outgoing_blossom_vert_idx + 1) % blossom.len()] {
-                            let mut intermediate_blossom_verts =
-                                Vec::from(&blossom[outgoing_blossom_vert_idx..]);
-                            intermediate_blossom_verts.push(blossom_root);
-                            // reverse the intermediate vertices because they are starting from the "outgoing" vertex
-                            first_segment.extend(intermediate_blossom_verts.iter().rev());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        } else if edge.1
-                            == blossom
-                                [(outgoing_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
-                        {
-                            let intermediate_blossom_verts =
-                                Vec::from(&blossom[0..outgoing_blossom_vert_idx + 1]);
-                            first_segment.extend(intermediate_blossom_verts.iter().rev());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        }
-                    } else if edge.1 == outgoing_blossom_vert {
-                        if edge.0 == blossom[(outgoing_blossom_vert_idx + 1) % blossom.len()] {
-                            let mut intermediate_blossom_verts =
-                                Vec::from(&blossom[outgoing_blossom_vert_idx..]);
-                            intermediate_blossom_verts.push(blossom_root);
-                            // reverse the intermediate vertices because they are starting from the "outgoing" vertex
-                            first_segment.extend(intermediate_blossom_verts.iter().rev());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        } else if edge.0
-                            == blossom
-                                [(outgoing_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
-                        {
-                            let intermediate_blossom_verts =
-                                Vec::from(&blossom[0..outgoing_blossom_vert_idx + 1]);
-                            first_segment.extend(intermediate_blossom_verts.iter().rev());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        }
+            // absolutely obnoxious case analysis here
+            for edge in original_matching.into_iter() {
+                if edge.0 == outgoing_blossom_vert {
+                    if edge.1 == blossom[(outgoing_blossom_vert_idx + 1) % blossom.len()] {
+                        let mut intermediate_blossom_verts =
+                            Vec::from(&blossom[outgoing_blossom_vert_idx..]);
+                        intermediate_blossom_verts.push(blossom_root);
+                        // reverse the intermediate vertices because they are starting from the "outgoing" vertex
+                        first_segment.extend(intermediate_blossom_verts.iter().rev());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
+                    } else if edge.1
+                        == blossom[(outgoing_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
+                    {
+                        let intermediate_blossom_verts =
+                            Vec::from(&blossom[0..outgoing_blossom_vert_idx + 1]);
+                        first_segment.extend(intermediate_blossom_verts.iter().rev());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
+                    }
+                } else if edge.1 == outgoing_blossom_vert {
+                    if edge.0 == blossom[(outgoing_blossom_vert_idx + 1) % blossom.len()] {
+                        let mut intermediate_blossom_verts =
+                            Vec::from(&blossom[outgoing_blossom_vert_idx..]);
+                        intermediate_blossom_verts.push(blossom_root);
+                        // reverse the intermediate vertices because they are starting from the "outgoing" vertex
+                        first_segment.extend(intermediate_blossom_verts.iter().rev());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
+                    } else if edge.0
+                        == blossom[(outgoing_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
+                    {
+                        let intermediate_blossom_verts =
+                            Vec::from(&blossom[0..outgoing_blossom_vert_idx + 1]);
+                        first_segment.extend(intermediate_blossom_verts.iter().rev());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
                     }
                 }
-                panic!("Did not find matched edge in blossom connected to outgoing vertex.")
-            } else {
-                let incoming_blossom_vert_idx =
+            }
+            panic!("Did not find matched edge in blossom connected to outgoing vertex.")
+        } else {
+            let incoming_blossom_vert_idx =
                     match blossom.into_iter().position(|v| original_graph.adjacency_list[incoming_vert].contains(v)) {
                         Some(v) => v,
                         None => panic!("Original graph adjacency list did not find a blossom vertex for incoming vertex.")
                     };
-                let incoming_blossom_vert = blossom[incoming_blossom_vert_idx];
+            let incoming_blossom_vert = blossom[incoming_blossom_vert_idx];
 
-                for edge in original_matching.into_iter() {
-                    if edge.0 == incoming_blossom_vert {
-                        if edge.1 == blossom[(incoming_blossom_vert_idx + 1) % blossom.len()] {
-                            let mut intermediate_blossom_verts =
-                                Vec::from(&blossom[incoming_blossom_vert_idx..]);
-                            intermediate_blossom_verts.push(blossom_root);
-                            // reverse the intermediate vertices because they are starting from the "incoming" vertex
-                            first_segment.extend(intermediate_blossom_verts.iter());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        } else if edge.1
-                            == blossom
-                                [(incoming_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
-                        {
-                            let intermediate_blossom_verts =
-                                Vec::from(&blossom[0..incoming_blossom_vert_idx + 1]);
-                            first_segment.extend(intermediate_blossom_verts.iter());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        }
-                    } else if edge.1 == incoming_blossom_vert {
-                        if edge.0 == blossom[(incoming_blossom_vert_idx + 1) % blossom.len()] {
-                            let mut intermediate_blossom_verts =
-                                Vec::from(&blossom[incoming_blossom_vert_idx..]);
-                            intermediate_blossom_verts.push(blossom_root);
-                            // reverse the intermediate vertices because they are starting from the "incoming" vertex
-                            first_segment.extend(intermediate_blossom_verts.iter());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        } else if edge.0
-                            == blossom
-                                [(incoming_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
-                        {
-                            let intermediate_blossom_verts =
-                                Vec::from(&blossom[0..incoming_blossom_vert_idx + 1]);
-                            first_segment.extend(intermediate_blossom_verts.iter());
-                            first_segment.extend(second_segment.iter());
-                            return first_segment;
-                        }
+            for edge in original_matching.into_iter() {
+                if edge.0 == incoming_blossom_vert {
+                    if edge.1 == blossom[(incoming_blossom_vert_idx + 1) % blossom.len()] {
+                        let mut intermediate_blossom_verts =
+                            Vec::from(&blossom[incoming_blossom_vert_idx..]);
+                        intermediate_blossom_verts.push(blossom_root);
+                        // reverse the intermediate vertices because they are starting from the "incoming" vertex
+                        first_segment.extend(intermediate_blossom_verts.iter());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
+                    } else if edge.1
+                        == blossom[(incoming_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
+                    {
+                        let intermediate_blossom_verts =
+                            Vec::from(&blossom[0..incoming_blossom_vert_idx + 1]);
+                        first_segment.extend(intermediate_blossom_verts.iter());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
+                    }
+                } else if edge.1 == incoming_blossom_vert {
+                    if edge.0 == blossom[(incoming_blossom_vert_idx + 1) % blossom.len()] {
+                        let mut intermediate_blossom_verts =
+                            Vec::from(&blossom[incoming_blossom_vert_idx..]);
+                        intermediate_blossom_verts.push(blossom_root);
+                        // reverse the intermediate vertices because they are starting from the "incoming" vertex
+                        first_segment.extend(intermediate_blossom_verts.iter());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
+                    } else if edge.0
+                        == blossom[(incoming_blossom_vert_idx + blossom.len() - 1) % blossom.len()]
+                    {
+                        let intermediate_blossom_verts =
+                            Vec::from(&blossom[0..incoming_blossom_vert_idx + 1]);
+                        first_segment.extend(intermediate_blossom_verts.iter());
+                        first_segment.extend(second_segment.iter());
+                        return first_segment;
                     }
                 }
-                panic!("Did not find matched edge in blossom connected to incoming vertex.")
             }
+            panic!("Did not find matched edge in blossom connected to incoming vertex.")
         }
     } else {
         path
@@ -525,13 +531,14 @@ fn find_augmenting_path(
                         if forest.root_map[v_index] != forest.root_map[w_index] {
                             return vw_path;
                         } else {
-                            let (contracted_graph, contracted_matching, blossom_idx) =
-                                contract_blossom(graph, matching, vw_path);
+                            let (contracted_graph, contracted_matching, blossom_root) =
+                                contract_blossom(graph, matching, &vw_path);
                             let contracted_path = find_augmenting_path(
                                 &contracted_graph,
                                 &contracted_matching,
                                 exposed_vertices,
                             );
+                            return expand_blossom(graph, matching, &contracted_matching, contracted_path, &vw_path, blossom_root);
                         }
                     }
                 }
