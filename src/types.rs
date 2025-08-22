@@ -21,6 +21,7 @@ pub trait Neighborhood {
     fn contains(&self, item: usize) -> bool;
     fn insert(&mut self, item: usize);
     fn remove(&mut self, item: usize) -> bool;
+    fn into_iter_no_move(&self) -> impl Iterator<Item = usize>;
     fn new() -> Self;
 }
 
@@ -45,6 +46,10 @@ impl Neighborhood for Vec<usize> {
         }
     }
 
+    fn into_iter_no_move(&self) -> impl Iterator<Item = usize> {
+        self.iter().map(|x| *x)
+    }
+
     fn new() -> Self {
         Vec::new()
     }
@@ -61,6 +66,10 @@ impl Neighborhood for HashSet<usize> {
 
     fn remove(&mut self, item: usize) -> bool {
         self.remove(&item)
+    }
+
+    fn into_iter_no_move(&self) -> impl Iterator<Item = usize> {
+        self.iter().map(|x| *x)
     }
 
     fn new() -> Self {
@@ -81,6 +90,10 @@ impl Neighborhood for BTreeSet<usize> {
         self.remove(&item)
     }
 
+    fn into_iter_no_move(&self) -> impl Iterator<Item = usize> {
+        self.iter().map(|x| *x)
+    }
+
     fn new() -> Self {
         BTreeSet::new()
     }
@@ -93,7 +106,7 @@ pub struct SquareMatrix<T> {
 
 impl<T: Deref<Target = T> + Copy> SquareMatrix<T> {
     pub fn from_weighted_edges(
-        weighted_edges: Vec<Edge<T>>,
+        weighted_edges: &Vec<Edge<T>>,
         directed: bool,
         no_edge_value: T,
         num_vertices: Option<usize>,
@@ -223,12 +236,12 @@ impl<
         }
 
         let weight_matrix = Some(SquareMatrix::from_weighted_edges(
-            edges,
+            &edges,
             directed,
             W::max_value(),
             Some(vertices.len()),
         ));
-        let edges = Some(edges.iter().map(|e| (e.0, e.1)).collect());
+        let edges = Some(edges.into_iter().map(|e| (e.0, e.1)).collect());
 
         Graph {
             vertices,

@@ -10,7 +10,7 @@ pub fn floyd_warshall<W: Bounded + Zero + Ord + Copy + Deref<Target = W>>(
     directed: bool,
 ) -> SquareMatrix<W> {
     let mut result =
-        SquareMatrix::from_weighted_edges(weighted_edge_list, directed, W::max_value(), None);
+        SquareMatrix::from_weighted_edges(&weighted_edge_list, directed, W::max_value(), None);
     for i in 0..result.len {
         result.set_ix(i, i, W::zero());
     }
@@ -61,7 +61,7 @@ fn contract_blossom<
         if i == blossom_root {
             new_adjacencies[i] = graph.adjacency_list[i].clone();
             for b in blossom.iter() {
-                for v in graph.adjacency_list[*b].into_iter() {
+                for v in graph.adjacency_list[*b].into_iter_no_move() {
                     new_adjacencies[i].insert(v);
                 }
             }
