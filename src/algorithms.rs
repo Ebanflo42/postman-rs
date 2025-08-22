@@ -1,16 +1,15 @@
-use core::fmt::Display;
-use std::{collections::{BTreeSet, HashSet}, marker::PhantomData, ops::Deref};
+use std::collections::{BTreeSet, HashSet};
 
-use num::{Bounded, PrimInt, Zero};
+use num::{Bounded, Zero};
 
 use crate::types::{Edge, Graph, Neighborhood, RootedSubGraphForest, SquareMatrix};
 
-pub fn floyd_warshall<W: Bounded + Zero + Ord + Copy + Deref<Target = W>>(
-    weighted_edge_list: Vec<Edge<W>>,
+pub fn floyd_warshall<W: Zero + Bounded + PartialOrd + Copy + Sized>(
+    weighted_edge_list: &Vec<Edge<W>>,
     directed: bool,
 ) -> SquareMatrix<W> {
     let mut result =
-        SquareMatrix::from_weighted_edges(&weighted_edge_list, directed, W::max_value(), None);
+        SquareMatrix::from_weighted_edges(weighted_edge_list, directed, W::max_value(), None);
     for i in 0..result.len {
         result.set_ix(i, i, W::zero());
     }
@@ -366,7 +365,7 @@ mod tests {
             (4, 0, 1.0),
             (0, 3, 1.0),
         ];
-        let distance_matrix = floyd_warshall(weighted_edges, false);
+        let distance_matrix = floyd_warshall(&weighted_edges, false);
         println!("{}", distance_matrix.to_string());
         assert_eq!(
             distance_matrix.data,

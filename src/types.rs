@@ -1,10 +1,6 @@
-use num::traits::Zero;
-use num::{Bounded, PrimInt};
+use num::Bounded;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
-use std::hash::Hash;
-use std::marker::PhantomData;
-use std::ops::Deref;
 
 pub type Edge<W> = (usize, usize, W);
 
@@ -104,7 +100,7 @@ pub struct SquareMatrix<T> {
     pub len: usize,
 }
 
-impl<T: Deref<Target = T> + Copy> SquareMatrix<T> {
+impl<T: Sized + Copy> SquareMatrix<T> {
     pub fn from_weighted_edges(
         weighted_edges: &Vec<Edge<T>>,
         directed: bool,
@@ -217,7 +213,7 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone> 
 }
 
 impl<
-        W: Bounded + Deref<Target = W> + Copy,
+        W: Bounded + Sized + Copy,
         N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone,
     > Graph<W, N>
 {
@@ -270,7 +266,7 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
     pub fn new(roots: Vec<usize>) -> Self {
         let mut vertex_index_remapping = BTreeMap::new();
         for (i, v) in roots.iter().enumerate() {
-            vertex_index_remapping[v] = i;
+            vertex_index_remapping.insert(*v, i);
         }
         RootedSubGraphForest {
             roots: roots.to_vec(),
@@ -281,9 +277,9 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
         }
     }
 
-    pub fn get_neighborhood(&self, vertex: usize) -> Option<N> {
+    pub fn get_neighborhood(&self, vertex: usize) -> Option<&N> {
         let index = self.vertex_index_remapping.get(&vertex)?;
-        Some(self.adjacencies[*index])
+        Some(&self.adjacencies[*index])
     }
 
     pub fn get_vertex_index(&self, vertex: usize) -> usize {
@@ -298,9 +294,9 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
         Some(self.root_map[*index])
     }
 
-    pub fn get_root_path(&self, vertex: usize) -> Option<Vec<usize>> {
+    pub fn get_root_path(&self, vertex: usize) -> Option<&Vec<usize>> {
         let index = self.vertex_index_remapping.get(&vertex)?;
-        Some(self.root_paths[*index])
+        Some(&self.root_paths[*index])
     }
 
     pub fn contains_vertex(&self, vertex: usize) -> bool {
@@ -315,7 +311,7 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
     pub fn add_edge(&mut self, edge: (usize, usize)) {
         // assumes first vertex is already in the tree
         // and that the second index is not
-        self.vertex_index_remapping[&edge.1] = self.vertex_index_remapping.len() - 1;
+        self.vertex_index_remapping.insert(edge.1, self.vertex_index_remapping.len() - 1);
         let index = match self.vertex_index_remapping.get(&edge.0) {
             None => panic!("Attempted to add an edge to RootedSubGraphForest whose first vertex was not already in the subgraph."),
             Some(i) => i
@@ -338,12 +334,12 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
         // find an unmarked edge which is incident to the given vertex, if one exists
         // return the vertex opposite to the given vertex
         let adjacency = match self.vertex_index_remapping.get(&incident) {
-            Some(i) => self.adjacencies[*i],
+            Some(i) => &self.adjacencies[*i],
             None => {
                 panic!("Attempted to query neighborhood of a vertex which is not in the subgraph")
             }
         };
-        for v in adjacency.into_iter() {
+        for v in adjacency.into_iter_no_move() {
             if !marked_edges.contains(&(incident, v)) {
                 return Some(v);
             }
