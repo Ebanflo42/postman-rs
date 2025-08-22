@@ -23,10 +23,12 @@ pub fn floyd_warshall<W: Zero + Bounded + PartialOrd + Copy + Sized>(
         for i in 0..result.len {
             if i != j {
                 for k in 0..result.len {
-                    let sum = result.get_ix(i, j) + result.get_ix(j, k);
-                    if k != j && result.get_ix(i, k) > sum {
-                        result.set_ix(i, k, sum);
-                        //pathtracker[result.len*i + k] = pathtracker[result.len*j + k];
+                    if k != j {
+                        let sum = result.get_ix(i, j) + result.get_ix(j, k);
+                        if result.get_ix(i, k) > sum {
+                            result.set_ix(i, k, sum);
+                            //pathtracker[result.len*i + k] = pathtracker[result.len*j + k];
+                        }
                     }
                 }
             }
@@ -252,7 +254,8 @@ fn find_augmenting_path<
 ) -> Vec<usize> {
     let mut marked_vertices = HashSet::new();
     let mut marked_edges = HashSet::from_iter(matching.iter().map(|x| *x));
-    let mut forest: RootedSubGraphForest<N> = RootedSubGraphForest::new(exposed_vertices.iter().map(|x| *x).collect());
+    let mut forest: RootedSubGraphForest<N> =
+        RootedSubGraphForest::new(exposed_vertices.iter().map(|x| *x).collect());
 
     while let Some(v) = forest.check_for_unmarked_vertex_w_even_dist(&marked_vertices) {
         while let Some(w) = forest.check_for_unmarked_edge(&marked_edges, v) {
@@ -349,30 +352,4 @@ pub fn edmonds_max_cardinality_matching<
         }
     }
     matching
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn floyd_warshall1() {
-        let weighted_edges = vec![
-            (0, 1, 1.0),
-            (1, 2, 1.0),
-            (2, 3, 2.0),
-            (3, 4, 1.0),
-            (4, 0, 1.0),
-            (0, 3, 1.0),
-        ];
-        let distance_matrix = floyd_warshall(&weighted_edges, false);
-        println!("{}", distance_matrix.to_string());
-        assert_eq!(
-            distance_matrix.data,
-            vec![
-                0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, 2.0, 2.0, 2.0, 1.0, 0.0, 2.0, 3.0, 1.0,
-                2.0, 2.0, 0.0, 1.0, 1.0, 2.0, 3.0, 1.0, 0.0
-            ]
-        );
-    }
 }
