@@ -170,7 +170,7 @@ impl<T: Display> SquareMatrix<T> {
     }
 }
 
-pub struct Graph<W, N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone> {
+pub struct Graph<W, N: Neighborhood + FromIterator<usize> + Clone> {
     // Set of vertices of the graph
     pub vertices: BTreeSet<usize>,
     // Set of adjacencies of the graph using some arbitrary neighborhood datastructure.
@@ -184,7 +184,7 @@ pub struct Graph<W, N: Neighborhood + FromIterator<usize> + IntoIterator<Item = 
     pub directed: bool,
 }
 
-impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone> Graph<(), N> {
+impl<N: Neighborhood + FromIterator<usize> + Clone> Graph<(), N> {
     pub fn from_edges(edges: Vec<(usize, usize)>, directed: bool) -> Self {
         let vertices = get_vertex_set(&edges);
         let mut adjacency_list = vec![N::new(); vertices.len()];
@@ -198,7 +198,7 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone> 
                 adjacency_list[edge.1].insert(edge.0);
             }
         }
-
+        //dbg!(adjacency_list.iter().map(|n| Vec::from_iter(n.into_iter_no_move())).collect::<Vec<Vec<usize>>>());
         let edges = Some(edges.iter().map(|e| (e.0, e.1)).collect());
         let weight_matrix = None;
 
@@ -214,7 +214,7 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone> 
 
 impl<
         W: Bounded + Sized + Copy,
-        N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize>+ Clone,
+        N: Neighborhood + FromIterator<usize> + Clone,
     > Graph<W, N>
 {
     pub fn from_weighted_edges(edges: Vec<Edge<W>>, directed: bool) -> Self {
@@ -249,8 +249,26 @@ impl<
     }
 }
 
+impl<W, N: Neighborhood + FromIterator<usize> + Clone> Graph<W, N> {
+    pub fn check_for_unmarked_edge(
+        &self,
+        marked_edges: &HashSet<(usize, usize)>,
+        incident: usize,
+    ) -> Option<usize> {
+        // find an unmarked edge which is incident to the given vertex, if one exists
+        // return the vertex opposite to the given vertex
+        for v in self.adjacency_list[incident].into_iter_no_move() {
+            if !marked_edges.contains(&(incident, v)) {
+                return Some(v);
+            }
+        }
+        None
+    }
+
+}
+
 pub struct RootedSubGraphForest<
-    N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone,
+    N: Neighborhood + FromIterator<usize> + Clone,
 > {
     pub roots: Vec<usize>,
     pub vertex_index_remapping: BTreeMap<usize, usize>,
@@ -324,27 +342,6 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
         let mut new_root_path = self.root_paths[*index].clone();
         new_root_path.push(edge.1);
         self.root_paths.push(new_root_path);
-    }
-
-    pub fn check_for_unmarked_edge(
-        &self,
-        marked_edges: &HashSet<(usize, usize)>,
-        incident: usize,
-    ) -> Option<usize> {
-        // find an unmarked edge which is incident to the given vertex, if one exists
-        // return the vertex opposite to the given vertex
-        let adjacency = match self.vertex_index_remapping.get(&incident) {
-            Some(i) => &self.adjacencies[*i],
-            None => {
-                panic!("Attempted to query neighborhood of a vertex which is not in the subgraph")
-            }
-        };
-        for v in adjacency.into_iter_no_move() {
-            if !marked_edges.contains(&(incident, v)) {
-                return Some(v);
-            }
-        }
-        None
     }
 
     pub fn check_for_unmarked_vertex_w_even_dist(

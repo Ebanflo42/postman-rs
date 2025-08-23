@@ -50,7 +50,7 @@ mod tests {
             (15, 16),
             (16, 17)
         ];
-        let graph: Graph<(), BTreeSet<usize>> = Graph::from_edges(edges, false);
+        let graph: Graph<(), Vec<usize>> = Graph::from_edges(edges, false);
         let matching = edmonds_max_cardinality_matching(&graph);
         println!("{:?}", matching)
     }

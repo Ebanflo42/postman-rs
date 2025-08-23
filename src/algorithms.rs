@@ -252,29 +252,39 @@ fn find_augmenting_path<
     matching: &Vec<(usize, usize)>,
     exposed_vertices: &BTreeSet<usize>,
 ) -> Vec<usize> {
+    // start with no marked vertices
     let mut marked_vertices = HashSet::new();
-    let mut marked_edges = HashSet::from_iter(matching.iter().map(|x| *x));
+    // mark every edge that is already in the matching
+    let mut marked_edges = HashSet::new();
+    for edge in matching.iter() {
+        marked_edges.insert(*edge);
+        marked_edges.insert((edge.1, edge.0));
+    }
+    // roots of the subgraph forest are the exposed vertices
+    // we are looking for augmenting paths, which will be paths between exposed vertices
     let mut forest: RootedSubGraphForest<N> =
         RootedSubGraphForest::new(exposed_vertices.iter().map(|x| *x).collect());
 
     while let Some(v) = forest.check_for_unmarked_vertex_w_even_dist(&marked_vertices) {
-        while let Some(w) = forest.check_for_unmarked_edge(&marked_edges, v) {
+        //println!("Found unmarked vertex with even distance from root.");
+        while let Some(w) = graph.check_for_unmarked_edge(&marked_edges, v) {
+            //println!("Found unmarked edge incident to vertex.");
             match forest.maybe_get_distance(w) {
                 None => {
-                    let w_matched_edge = match matching.iter().position(|e| e.0 == w || e.1 == w) {
-                        Some(e) => matching[e],
+                    // if w is not in the forest then it is not exposed and has some edge in the matching
+                    // find that edge in the matching and add it to the forest
+                    let w_matched_edge = match matching.iter().find(|e| e.0 == w || e.1 == w) {
+                        Some(e) => *e,
                         None => panic!("Found a vertex incident to an unmarked edge which was not in the forest and was also not in the matching.")
                     };
-                    let x = if w_matched_edge.0 == w {
-                        w_matched_edge.1
-                    } else {
-                        w_matched_edge.0
-                    };
+                    forest.add_edge(w_matched_edge);
+                    forest.add_edge((w_matched_edge.1, w_matched_edge.0));
                     forest.add_edge((v, w));
-                    forest.add_edge((w, x));
+                    forest.add_edge((w, v));
                 }
                 Some(d) => {
                     if d % 2 == 0 {
+                        // we can only find an augmenting path between v and w if the distance between them is even
                         let v_index = forest.get_vertex_index(v);
                         let w_index = forest.get_vertex_index(w);
                         let mut vw_path = forest.root_paths[v_index].clone();
@@ -322,6 +332,7 @@ pub fn edmonds_max_cardinality_matching<
         if augmenting_path.len() == 0 {
             break;
         } else {
+            dbg!(augmenting_path.clone());
             // endpoints of the augmenting path will no longer be exposed
             let l = augmenting_path.len();
             let v = augmenting_path[0];
