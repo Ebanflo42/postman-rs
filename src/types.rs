@@ -278,7 +278,7 @@ pub struct RootedSubGraphForest<
     pub root_paths: Vec<Vec<usize>>,
 }
 
-impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
+impl<N: Neighborhood + FromIterator<usize> + Clone>
     RootedSubGraphForest<N>
 {
     pub fn new(roots: Vec<usize>) -> Self {
@@ -287,7 +287,7 @@ impl<N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>
             vertex_index_remapping.insert(*v, i);
         }
         RootedSubGraphForest {
-            roots: roots.to_vec(),
+            roots: roots.clone(),
             vertex_index_remapping: vertex_index_remapping,
             adjacencies: vec![N::new(); roots.len()],
             root_map: roots.clone(),

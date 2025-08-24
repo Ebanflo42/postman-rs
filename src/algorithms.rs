@@ -40,7 +40,7 @@ pub fn floyd_warshall<W: Zero + Bounded + PartialOrd + Copy + Sized>(
 
 fn contract_blossom<
     W,
-    N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone,
+    N: Neighborhood + FromIterator<usize> + Clone,
 >(
     graph: &Graph<W, N>,
     matching: &Vec<(usize, usize)>,
@@ -102,7 +102,7 @@ fn contract_blossom<
     )
 }
 
-fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone>(
+fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
     original_graph: &Graph<W, N>,
     original_matching: &Vec<(usize, usize)>,
     contracted_matching: &Vec<(usize, usize)>,
@@ -246,7 +246,7 @@ fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + IntoIterator<Item =
 
 fn find_augmenting_path<
     W,
-    N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone,
+    N: Neighborhood + FromIterator<usize> + Clone,
 >(
     graph: &Graph<W, N>,
     matching: &Vec<(usize, usize)>,
@@ -263,11 +263,18 @@ fn find_augmenting_path<
     // roots of the subgraph forest are the exposed vertices
     // we are looking for augmenting paths, which will be paths between exposed vertices
     let mut forest: RootedSubGraphForest<N> =
-        RootedSubGraphForest::new(exposed_vertices.iter().map(|x| *x).collect());
+        RootedSubGraphForest::new(exposed_vertices.into_iter_no_move().collect());
+
+    dbg!(exposed_vertices.clone());
+    //dbg!(matching.clone());
 
     while let Some(v) = forest.check_for_unmarked_vertex_w_even_dist(&marked_vertices) {
+        dbg!(v);
+        //dbg!(marked_vertices.iter().map(|x| *x).collect::<Vec<usize>>());
+        //dbg!(forest.roots.clone());
         //println!("Found unmarked vertex with even distance from root.");
         while let Some(w) = graph.check_for_unmarked_edge(&marked_edges, v) {
+            dbg!(w);
             //println!("Found unmarked edge incident to vertex.");
             match forest.maybe_get_distance(w) {
                 None => {
@@ -321,7 +328,7 @@ fn find_augmenting_path<
 
 pub fn edmonds_max_cardinality_matching<
     W,
-    N: Neighborhood + FromIterator<usize> + IntoIterator<Item = usize> + Clone,
+    N: Neighborhood + FromIterator<usize> + Clone,
 >(
     graph: &Graph<W, N>,
 ) -> Vec<(usize, usize)> {
@@ -332,21 +339,13 @@ pub fn edmonds_max_cardinality_matching<
         if augmenting_path.len() == 0 {
             break;
         } else {
-            dbg!(augmenting_path.clone());
+            //dbg!(augmenting_path.clone());
             // endpoints of the augmenting path will no longer be exposed
             let l = augmenting_path.len();
             let v = augmenting_path[0];
             let w = augmenting_path[l - 1];
-            if let Some(i) = exposed_vertices.iter().position(|u| *u == v) {
-                exposed_vertices.remove(&i);
-            } else {
-                panic!("First vertex of augmenting path was not an exposed vertex!");
-            }
-            if let Some(j) = exposed_vertices.iter().position(|u| *u == w) {
-                exposed_vertices.remove(&j);
-            } else {
-                panic!("Last vertex of augmenting path was not an exposed vertex!");
-            }
+            exposed_vertices.remove(&v);
+            exposed_vertices.remove(&w);
 
             // now augment the matching, in place
             for i in 0..(augmenting_path.len() - 1) / 2 {
