@@ -274,7 +274,6 @@ pub struct RootedSubGraphForest<
     pub vertex_index_remapping: BTreeMap<usize, usize>,
     pub adjacencies: Vec<N>,
     pub root_map: Vec<usize>,
-    // make sure I know which direction these paths are going
     pub root_paths: Vec<Vec<usize>>,
 }
 
@@ -328,8 +327,8 @@ impl<N: Neighborhood + FromIterator<usize> + Clone>
 
     pub fn add_edge(&mut self, edge: (usize, usize)) {
         // assumes first vertex is already in the tree
-        // and that the second index is not
-        self.vertex_index_remapping.insert(edge.1, self.vertex_index_remapping.len() - 1);
+        // and that the second vertex is not
+        self.vertex_index_remapping.insert(edge.1, self.vertex_index_remapping.len());
         let index = match self.vertex_index_remapping.get(&edge.0) {
             None => panic!("Attempted to add an edge to RootedSubGraphForest whose first vertex was not already in the subgraph."),
             Some(i) => i
@@ -348,6 +347,8 @@ impl<N: Neighborhood + FromIterator<usize> + Clone>
         &self,
         marked_vertices: &HashSet<usize>,
     ) -> Option<usize> {
+        // find a vertex in the forest which has an even distance from its root
+        // and which is contained in `marked_vertices`
         for (vertex, i) in self.vertex_index_remapping.iter() {
             if self.root_paths[*i].len() % 2 == 1 && !marked_vertices.contains(vertex) {
                 return Some(*vertex);

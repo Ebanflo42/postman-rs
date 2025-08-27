@@ -265,29 +265,35 @@ fn find_augmenting_path<
     let mut forest: RootedSubGraphForest<N> =
         RootedSubGraphForest::new(exposed_vertices.into_iter_no_move().collect());
 
-    dbg!(exposed_vertices.clone());
-    //dbg!(matching.clone());
+    //dbg!(exposed_vertices.clone());
+
+    let mut debug = false;
 
     while let Some(v) = forest.check_for_unmarked_vertex_w_even_dist(&marked_vertices) {
-        dbg!(v);
-        //dbg!(marked_vertices.iter().map(|x| *x).collect::<Vec<usize>>());
-        //dbg!(forest.roots.clone());
-        //println!("Found unmarked vertex with even distance from root.");
+        //if v == 8 || debug {
+        //    if !debug {
+        //        println!("here!");
+        //    } else {
+        //        dbg!(v);
+        //    }
+        //    debug = true;
+        //    dbg!(forest.root_map.clone());
+        //    dbg!(Vec::from_iter(forest.vertex_index_remapping.iter()));
+        //}
         while let Some(w) = graph.check_for_unmarked_edge(&marked_edges, v) {
-            dbg!(w);
-            //println!("Found unmarked edge incident to vertex.");
+            //dbg!(w);
             match forest.maybe_get_distance(w) {
                 None => {
                     // if w is not in the forest then it is not exposed and has some edge in the matching
                     // find that edge in the matching and add it to the forest
                     let w_matched_edge = match matching.iter().find(|e| e.0 == w || e.1 == w) {
-                        Some(e) => *e,
+                        Some(e) => if e.0 == w {*e} else {(e.1, e.0)},
                         None => panic!("Found a vertex incident to an unmarked edge which was not in the forest and was also not in the matching.")
                     };
-                    forest.add_edge(w_matched_edge);
-                    forest.add_edge((w_matched_edge.1, w_matched_edge.0));
+                    // it is important that the edges are added in this order
+                    // the `add_edge` function always expects the first vertex to be in the forest already
                     forest.add_edge((v, w));
-                    forest.add_edge((w, v));
+                    forest.add_edge(w_matched_edge);
                 }
                 Some(d) => {
                     if d % 2 == 0 {
@@ -334,7 +340,7 @@ pub fn edmonds_max_cardinality_matching<
 ) -> Vec<(usize, usize)> {
     let mut matching = Vec::new();
     let mut exposed_vertices = graph.vertices.clone();
-    loop {
+    while exposed_vertices.len() > 0 {
         let augmenting_path = find_augmenting_path(&graph, &matching, &exposed_vertices);
         if augmenting_path.len() == 0 {
             break;
@@ -344,6 +350,7 @@ pub fn edmonds_max_cardinality_matching<
             let l = augmenting_path.len();
             let v = augmenting_path[0];
             let w = augmenting_path[l - 1];
+            //dbg!(exposed_vertices.clone());
             exposed_vertices.remove(&v);
             exposed_vertices.remove(&w);
 
@@ -355,7 +362,7 @@ pub fn edmonds_max_cardinality_matching<
                 }) {
                     matching[j] = (augmenting_path[2 * i], augmenting_path[2 * i + 1]);
                 } else {
-                    panic!("Did not find an edge of the augmenting path in the matching.")
+                    panic!("Did not find an odd edge of the augmenting path in the matching.")
                 }
             }
             matching.push((augmenting_path[l - 2], augmenting_path[l - 1]));
