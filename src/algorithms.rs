@@ -38,14 +38,11 @@ pub fn floyd_warshall<W: Zero + Bounded + PartialOrd + Copy + Sized>(
     result
 }
 
-fn contract_blossom<
-    W,
-    N: Neighborhood + FromIterator<usize> + Clone,
->(
+fn contract_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
     graph: &Graph<W, N>,
     matching: &Vec<(usize, usize)>,
     blossom: &Vec<usize>,
-) -> (Graph<W, N>, Vec<(usize, usize)>, usize) {
+) -> (Graph<W, N>, Vec<(usize, usize)>, usize, BTreeSet<usize>) {
     // assume the first vertex in the blossom is the root
     // the blossom passed to this function should always satisfy this assumption
     let blossom_root = blossom[0];
@@ -57,16 +54,22 @@ fn contract_blossom<
         }
     }
 
+    // construct the adjacency list of the contracted graph
+    // by connecting every node that is connected to the blossom
+    // directly to the root of the blossom
     let mut new_adjacencies = vec![N::new(); graph.vertices.len()];
     for i in 0..new_adjacencies.len() {
         if i == blossom_root {
             new_adjacencies[i] = graph.adjacency_list[i].clone();
             for b in blossom.iter() {
                 for v in graph.adjacency_list[*b].into_iter_no_move() {
-                    new_adjacencies[i].insert(v);
+                    if !blossom.iter().any(|b| *b == v) {
+                        new_adjacencies[i].insert(v);
+                    }
                 }
             }
         } else if !blossom.iter().any(|b| *b == i) {
+            new_adjacencies[i] = graph.adjacency_list[i].clone();
             for b in blossom.iter() {
                 if *b != blossom_root {
                     if new_adjacencies[i].remove(*b) {
@@ -89,6 +92,13 @@ fn contract_blossom<
             new_matching.push((*v, *w));
         }
     }
+
+    let mut new_exposed_vertices = new_vertices.clone();
+    for (v, w) in new_matching.iter() {
+        new_exposed_vertices.remove(v);
+        new_exposed_vertices.remove(w);
+    }
+
     (
         Graph {
             vertices: new_vertices,
@@ -99,6 +109,7 @@ fn contract_blossom<
         },
         new_matching,
         blossom_root,
+        new_exposed_vertices,
     )
 }
 
@@ -110,11 +121,16 @@ fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
     blossom: &Vec<usize>,
     blossom_root: usize,
 ) -> Vec<usize> {
+    // this function expands the path from the graph with the contracted blossom
+    // to the original graph. if the path does not pass through the blossom, we
+    // do not need to do anything
     if let Some(i) = path.iter().position(|v| *v == blossom_root) {
         // if the path passes through the blossom, there are two ways to expand the path
         // and we have to carefully choose the one which ensures that the resulting path
         // is still alternating
         // begin by cutting the path into the segments before and after the blossom
+        // the `first_segment` is mutable because we will append the rest of the
+        // edges of the augmenting path onto it
         let mut first_segment = if i > 0 {
             Vec::from(&path[..i])
         } else {
@@ -125,11 +141,12 @@ fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
         } else {
             Vec::new()
         };
-        let incoming_vert = *first_segment.last().unwrap();
-        let outgoing_vert = second_segment[0];
 
-        // determine if the edge going into the blossom is in the matching
-        // or if the blossom is the first node in the path
+        // the blossom expansion can then be subdivided into two cases
+        // 1) the incoming edge to the blossom is matched or the blossom
+        // is the first node in the path
+        // 2) the outgoing edge to the blossom is matched or the blossom
+        // is the last node in the path
         let incoming_edge_matched = if i == 0 {
             true
         } else if i == path.len() - 1 {
@@ -142,6 +159,7 @@ fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
         };
 
         if incoming_edge_matched {
+            let outgoing_vert = second_segment[0];
             let outgoing_blossom_vert_idx =
                     match blossom.into_iter().position(|v| original_graph.adjacency_list[outgoing_vert].contains(*v)) {
                         Some(i) => i,
@@ -191,6 +209,7 @@ fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
             }
             panic!("Did not find matched edge in blossom connected to outgoing vertex.")
         } else {
+            let incoming_vert = *first_segment.last().unwrap();
             let incoming_blossom_vert_idx =
                     match blossom.into_iter().position(|v| original_graph.adjacency_list[incoming_vert].contains(*v)) {
                         Some(v) => v,
@@ -244,14 +263,12 @@ fn expand_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
     }
 }
 
-fn find_augmenting_path<
-    W,
-    N: Neighborhood + FromIterator<usize> + Clone,
->(
+fn find_augmenting_path<W, N: Neighborhood + FromIterator<usize> + Clone>(
     graph: &Graph<W, N>,
     matching: &Vec<(usize, usize)>,
     exposed_vertices: &BTreeSet<usize>,
 ) -> Vec<usize> {
+    //dbg!(matching.clone());
     // start with no marked vertices
     let mut marked_vertices = HashSet::new();
     // mark every edge that is already in the matching
@@ -265,25 +282,20 @@ fn find_augmenting_path<
     let mut forest: RootedSubGraphForest<N> =
         RootedSubGraphForest::new(exposed_vertices.into_iter_no_move().collect());
 
-    //dbg!(exposed_vertices.clone());
-
-    let mut debug = false;
-
     while let Some(v) = forest.check_for_unmarked_vertex_w_even_dist(&marked_vertices) {
-        //if v == 8 || debug {
-        //    if !debug {
-        //        println!("here!");
-        //    } else {
-        //        dbg!(v);
-        //    }
-        //    debug = true;
-        //    dbg!(forest.root_map.clone());
-        //    dbg!(Vec::from_iter(forest.vertex_index_remapping.iter()));
-        //}
         while let Some(w) = graph.check_for_unmarked_edge(&marked_edges, v) {
-            //dbg!(w);
             match forest.maybe_get_distance(w) {
                 None => {
+                    dbg!(v);
+                    dbg!(w);
+                    dbg!(Vec::from_iter(marked_edges.iter()));
+                    dbg!(matching.clone());
+                    dbg!(Vec::from_iter(
+                        graph.adjacency_list[v].clone().into_iter_no_move()
+                    ));
+                    dbg!(Vec::from_iter(
+                        graph.adjacency_list[w].clone().into_iter_no_move()
+                    ));
                     // if w is not in the forest then it is not exposed and has some edge in the matching
                     // find that edge in the matching and add it to the forest
                     let w_matched_edge = match matching.iter().find(|e| e.0 == w || e.1 == w) {
@@ -305,12 +317,17 @@ fn find_augmenting_path<
                         if forest.root_map[v_index] != forest.root_map[w_index] {
                             return vw_path;
                         } else {
-                            let (contracted_graph, contracted_matching, blossom_root) =
-                                contract_blossom(graph, matching, &vw_path);
+                            let (
+                                contracted_graph,
+                                contracted_matching,
+                                blossom_root,
+                                new_exposed_vertices,
+                            ) = contract_blossom(graph, matching, &vw_path);
+                            dbg!(blossom_root);
                             let contracted_path = find_augmenting_path(
                                 &contracted_graph,
                                 &contracted_matching,
-                                exposed_vertices,
+                                &new_exposed_vertices,
                             );
                             return expand_blossom(
                                 graph,
@@ -332,25 +349,22 @@ fn find_augmenting_path<
     Vec::new()
 }
 
-pub fn edmonds_max_cardinality_matching<
-    W,
-    N: Neighborhood + FromIterator<usize> + Clone,
->(
+pub fn edmonds_max_cardinality_matching<W, N: Neighborhood + FromIterator<usize> + Clone>(
     graph: &Graph<W, N>,
 ) -> Vec<(usize, usize)> {
     let mut matching = Vec::new();
     let mut exposed_vertices = graph.vertices.clone();
+
     while exposed_vertices.len() > 0 {
+        dbg!(matching.clone());
         let augmenting_path = find_augmenting_path(&graph, &matching, &exposed_vertices);
         if augmenting_path.len() == 0 {
             break;
         } else {
-            //dbg!(augmenting_path.clone());
             // endpoints of the augmenting path will no longer be exposed
             let l = augmenting_path.len();
             let v = augmenting_path[0];
             let w = augmenting_path[l - 1];
-            //dbg!(exposed_vertices.clone());
             exposed_vertices.remove(&v);
             exposed_vertices.remove(&w);
 

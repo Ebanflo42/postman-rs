@@ -185,8 +185,39 @@ pub struct Graph<W, N: Neighborhood + FromIterator<usize> + Clone> {
 }
 
 impl<N: Neighborhood + FromIterator<usize> + Clone> Graph<(), N> {
-    pub fn from_edges(edges: Vec<(usize, usize)>, directed: bool) -> Self {
+    pub fn from_edges(edges: &Vec<(usize, usize)>, directed: bool) -> Self {
         let vertices = get_vertex_set(&edges);
+        let mut adjacency_list = vec![N::new(); vertices.len()];
+        if directed {
+            for edge in edges.iter() {
+                adjacency_list[edge.0].insert(edge.1);
+            }
+        } else {
+            for edge in edges.iter() {
+                adjacency_list[edge.0].insert(edge.1);
+                adjacency_list[edge.1].insert(edge.0);
+            }
+        }
+        //dbg!(adjacency_list.iter().map(|n| Vec::from_iter(n.into_iter_no_move())).collect::<Vec<Vec<usize>>>());
+        let edges = Some(edges.iter().map(|e| (e.0, e.1)).collect());
+        let weight_matrix = None;
+
+        Graph {
+            vertices,
+            adjacency_list,
+            edges,
+            weight_matrix,
+            directed,
+        }
+    }
+
+    pub fn from_edges_and_vertices(edges: &Vec<(usize, usize)>, vertices: &Vec<usize>, directed: bool) -> Self {
+        let vertices = BTreeSet::from_iter(vertices.iter().map(|v| *v));
+        let edge_vertices = get_vertex_set(&edges);
+        if !vertices.is_superset(&edge_vertices) {
+            panic!("Passed bad vertex set!");
+        }
+
         let mut adjacency_list = vec![N::new(); vertices.len()];
         if directed {
             for edge in edges.iter() {
@@ -217,8 +248,44 @@ impl<
         N: Neighborhood + FromIterator<usize> + Clone,
     > Graph<W, N>
 {
-    pub fn from_weighted_edges(edges: Vec<Edge<W>>, directed: bool) -> Self {
+    pub fn from_weighted_edges(edges: &Vec<Edge<W>>, directed: bool) -> Self {
         let vertices = get_vertex_set(&edges.iter().map(|e| (e.0, e.1)).collect());
+        let mut adjacency_list = vec![N::new(); vertices.len()];
+        if directed {
+            for edge in edges.iter() {
+                adjacency_list[edge.0].insert(edge.1);
+            }
+        } else {
+            for edge in edges.iter() {
+                adjacency_list[edge.0].insert(edge.1);
+                adjacency_list[edge.1].insert(edge.0);
+            }
+        }
+
+        let weight_matrix = Some(SquareMatrix::from_weighted_edges(
+            &edges,
+            directed,
+            W::max_value(),
+            Some(vertices.len()),
+        ));
+        let edges = Some(edges.into_iter().map(|e| (e.0, e.1)).collect());
+
+        Graph {
+            vertices,
+            adjacency_list,
+            edges,
+            weight_matrix,
+            directed,
+        }
+    }
+
+    pub fn from_weighted_edges_and_vertices(edges: &Vec<Edge<W>>, vertices: &Vec<usize>, directed: bool) -> Self {
+        let vertices = BTreeSet::from_iter(vertices.iter().map(|v| *v));
+        let edge_vertices = get_vertex_set(&edges.iter().map(|e| (e.0, e.1)).collect());
+        if !vertices.is_superset(&edge_vertices) {
+            panic!("Passed bad vertex set!");
+        }
+
         let mut adjacency_list = vec![N::new(); vertices.len()];
         if directed {
             for edge in edges.iter() {
