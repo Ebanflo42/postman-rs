@@ -52,7 +52,7 @@ mod tests {
             (16, 17)
         ];
         let graph: Graph<(), Vec<usize>> = Graph::from_edges(&edges, false);
-        let matching = edmonds_max_cardinality_matching(&graph);
+        let matching = max_cardinality_matching(&graph);
         let true_matching: Vec<(usize, usize)> = vec![(0, 1), (2, 3), (8, 5), (6, 9), (4, 7), (10, 11), (12, 13), (14, 15), (16, 17)];
         println!("{:?}", matching);
         assert_eq!(matching, true_matching);
@@ -80,7 +80,7 @@ mod tests {
         ];
         let vertices = (0usize..17).collect();
         let graph: Graph<(), BTreeSet<usize>> = Graph::from_edges_and_vertices(&edges, &vertices, false);
-        let matching = edmonds_max_cardinality_matching(&graph);
+        let matching = max_cardinality_matching(&graph);
         let true_matching: Vec<(usize, usize)> = vec![(0, 1), (2, 3), (8, 5), (6, 9), (4, 7), (10, 11), (12, 13), (14, 15)];
         println!("{:?}", matching);
         assert_eq!(matching, true_matching);
@@ -99,7 +99,7 @@ mod tests {
         ];
         let vertices = (0usize..18).collect();
         let graph: Graph<(), HashSet<usize>> = Graph::from_edges_and_vertices(&edges, &vertices, false);
-        let matching = edmonds_max_cardinality_matching(&graph);
+        let matching = max_cardinality_matching(&graph);
         //let true_matching: Vec<(usize, usize)> = vec![(0, 1), (2, 3), (8, 5), (6, 9), (4, 7), (10, 11), (12, 13), (14, 15), (16, 17)];
         println!("{:?}", matching);
         //assert_eq!(matching, true_matching);

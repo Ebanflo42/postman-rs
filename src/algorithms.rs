@@ -1,9 +1,9 @@
 use std::{
     cmp::min,
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, HashSet}, hash::Hash,
 };
 
-use num::{Bounded, Zero};
+use num::{Bounded, Zero, Float, pow};
 
 use crate::types::{Edge, Graph, Neighborhood, RootedSubGraphForest, SquareMatrix};
 
@@ -373,7 +373,7 @@ fn find_augmenting_path<W, N: Neighborhood + FromIterator<usize> + Clone>(
     Vec::new()
 }
 
-pub fn edmonds_max_cardinality_matching<W, N: Neighborhood + FromIterator<usize> + Clone>(
+pub fn max_cardinality_matching<W, N: Neighborhood + FromIterator<usize> + Clone>(
     graph: &Graph<W, N>,
 ) -> Vec<(usize, usize)> {
     let mut matching = Vec::new();
@@ -406,4 +406,68 @@ pub fn edmonds_max_cardinality_matching<W, N: Neighborhood + FromIterator<usize>
         }
     }
     matching
+}
+
+
+pub fn max_cardinality_min_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
+    graph: &Graph<f64, N>,
+) -> Vec<(usize, usize)> {
+    // not modified during algorithm iteration
+    let n_vertices = graph.vertices.len();
+    let weight_matrix = match &graph.weight_matrix {
+        None => panic!("Minimum weight matching is only valid for weighted graphs."),
+        Some(w) => w
+    };
+    let edges = match &graph.edges {
+        None => panic!("Graph should have its edges initialized."),
+        Some(es) => es
+    };
+    let mut neighborhood_endpoints = vec![Vec::new(); n_vertices];
+    for (i, edge) in edges.iter().enumerate() {
+        neighborhood_endpoints[edge.0].push(2*i+1);
+        neighborhood_endpoints[edge.1].push(2*i);
+    }
+
+    // modified during algorithm iteration
+    let mut blossom_labels = vec![0u8; n_vertices];
+    let mut label_endpoints = vec![0i8; n_vertices];
+    let mut blossom_id = Vec::from_iter(0usize..n_vertices);
+    let mut blossom_parent = vec![-1i8; 2*n_vertices];
+    let mut blossom_children = vec![N::new(); 2*n_vertices];
+    let mut blossom_base = Vec::from_iter(0isize..(n_vertices as isize));
+    for _ in 0..n_vertices {blossom_base.push(-1);}
+    let mut blossom_nbrhd = vec![N::new(); 2*n_vertices];
+    let mut best_edge = vec![-1isize; 2*n_vertices];
+    let mut blossom_best_edges = vec![N::new(); 2*n_vertices];
+    let mut unused_blossoms = Vec::from_iter(n_vertices..2*n_vertices);
+    let mut dual_soln = vec![<f64 as Bounded>::max_value(); n_vertices];
+    for _ in 0..n_vertices {dual_soln.push(0.0);}
+    let mut allowed_edge: Vec<bool> = edges.iter().map(|_| false).collect();
+    //let mut queue = Vec::new();
+
+    let slack = |k: usize| {
+        let (i, j) = edges[k];
+        let w = weight_matrix.get_ix(i, j);
+        dual_soln[i] + dual_soln[j] - 2.0*w
+    };
+
+    /*
+    fn blossom_leaves<N: Neighborhood + FromIterator<usize> + Clone>(b: usize, children: Vec<N>, n_verts: usize) -> Vec<usize> {
+        if b < n_verts {
+            vec![b]
+        } else {
+            let mut result = Vec::new();
+            for ch in children[b].into_iter_no_move() {
+                if ch < n_verts {
+                    result.push(ch);
+                } else {
+                    result.extend(blossom_leaves(ch, children, n_verts).iter())
+                }
+            }
+            result
+        }
+    }
+    */
+
+    Vec::new()
 }

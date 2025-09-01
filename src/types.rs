@@ -184,6 +184,61 @@ pub struct Graph<W, N: Neighborhood + FromIterator<usize> + Clone> {
     pub directed: bool,
 }
 
+impl<W, N: Neighborhood + FromIterator<usize> + Clone> Graph<W, N> {
+
+    pub fn compute_edges(&mut self){
+        match &self.edges {
+            None => {
+                let mut es = BTreeSet::new();
+                for v in self.vertices.iter() {
+                    for w in self.adjacency_list[*v].into_iter_no_move() {
+                        if self.directed || !es.contains(&(w, *v)) {
+                            es.insert((*v, w));
+                        }
+                    }
+                }
+                self.edges = Some(Vec::from_iter(es.iter().map(|e| *e)));
+            },
+            Some(_) => return,
+        }
+    }
+
+    pub fn get_edges_set(&self) -> BTreeSet<(usize, usize)> {
+        match &self.edges {
+            None => {
+                let mut es = BTreeSet::new();
+                for v in self.vertices.iter() {
+                    for w in self.adjacency_list[*v].into_iter_no_move() {
+                        if self.directed || !es.contains(&(w, *v)) {
+                            es.insert((*v, w));
+                        }
+                    }
+                }
+                es
+            },
+            Some(es) => BTreeSet::from_iter(es.iter().map(|e| *e)),
+        }
+    }
+
+    pub fn get_edges_vec(&self) -> Vec<(usize, usize)> {
+        match &self.edges {
+            None => {
+                let mut es = BTreeSet::new();
+                for v in self.vertices.iter() {
+                    for w in self.adjacency_list[*v].into_iter_no_move() {
+                        if self.directed || !es.contains(&(w, *v)) {
+                            es.insert((*v, w));
+                        }
+                    }
+                }
+                Vec::from_iter(es.into_iter())
+            },
+            Some(es) => es.clone(),
+        }
+    }
+
+}
+
 impl<N: Neighborhood + FromIterator<usize> + Clone> Graph<(), N> {
     pub fn from_edges(edges: &Vec<(usize, usize)>, directed: bool) -> Self {
         let vertices = get_vertex_set(&edges);
@@ -332,6 +387,22 @@ impl<W, N: Neighborhood + FromIterator<usize> + Clone> Graph<W, N> {
         None
     }
 
+}
+
+pub struct BlossomData<N: Neighborhood + FromIterator<usize> + Clone> {
+    pub n_vertices: usize,
+    pub blossom_labels: Vec<usize>,
+    pub label_endpoints: Vec<usize>,
+    pub blossom_id: Vec<usize>,
+    pub blossom_parent: Vec<i64>,
+    pub blossom_children: Vec<N>,
+    pub blossom_base: Vec<i64>,
+    pub blossom_nbrhd: Vec<N>,
+    pub best_edge: Vec<i64>,
+    pub blossom_best_edges: Vec<N>,
+    pub unused_blossoms: Vec<usize>,
+    pub dual_soln: Vec<f64>,
+    pub allowed_edge: Vec<bool>
 }
 
 pub struct RootedSubGraphForest<
