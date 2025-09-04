@@ -1,4 +1,4 @@
-use num::Bounded;
+use num::{Bounded, One};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
 use std::iter::{Chain, Copied};
@@ -394,19 +394,20 @@ impl<W, N: Neighborhood + FromIterator<usize> + Clone> Graph<W, N> {
 }
 
 pub struct BlossomData {
-    pub n_vertices: usize,
+    n_vertices: usize,
+    n_edges: usize,
     pub blossom_labels: Vec<u8>,
     pub label_endpoints: Vec<i64>,
-    pub blossom_endpoints: Vec<Vec<i64>>,
+    blossom_endpoints: Vec<Vec<i64>>,
     pub blossom_id: Vec<usize>,
-    pub blossom_parent: Vec<i64>,
-    pub blossom_children: Vec<Vec<usize>>,
-    pub blossom_base: Vec<i64>,
-    pub blossom_nbrhd: Vec<Vec<usize>>,
+    blossom_parent: Vec<i64>,
+    blossom_children: Vec<Vec<usize>>,
+    blossom_base: Vec<i64>,
+    blossom_nbrhd: Vec<Vec<usize>>,
     pub best_edge: Vec<i64>,
-    pub blossom_best_edges: Vec<Vec<usize>>,
-    pub unused_blossoms: Vec<usize>,
-    pub dual_soln: Vec<f64>,
+    blossom_best_edges: Vec<Vec<usize>>,
+    unused_blossoms: Vec<usize>,
+    dual_soln: Vec<f64>,
     pub allowed_edge: Vec<bool>,
 }
 
@@ -468,6 +469,60 @@ impl<'a> BlossomLeaves<'a> {
     }
 }
 
+enum LeafContainer<'a> {
+    Flat(Vec<usize>),
+    DFS(BlossomLeaves<'a>),
+    One(usize),
+}
+
+pub struct VertexIterator<'a> {
+    iters: Vec<LeafContainer<'a>>,
+}
+
+impl<'a> Iterator for VertexIterator<'a> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iters.last() {
+            None => None,
+            Some(it) => match it {
+                LeafContainer::Flat(v) => match v.pop() {
+                    None => {
+                        self.iters.pop();
+                        self.next()
+                    }
+                    Some(x) => Some(x),
+                },
+                LeafContainer::DFS(b) => match b.next() {
+                    None => {
+                        self.iters.pop();
+                        self.next()
+                    }
+                    Some(x) => Some(x),
+                },
+                LeafContainer::One(x) => {
+                    self.iters.pop();
+                    Some(*x)
+                }
+            },
+        }
+    }
+}
+
+impl<'a> VertexIterator<'a> {
+    pub fn new() -> Self {
+        VertexIterator { iters: Vec::new() }
+    }
+
+    pub fn chain(&mut self, other: LeafContainer<'a>) {
+        self.iters.push(other);
+    }
+
+    pub fn push(&mut self, x: usize) {
+        self.iters.push(LeafContainer::One(x));
+    }
+}
+
 impl BlossomData {
     pub fn new(n_vertices: usize, n_edges: usize) -> Self {
         let blossom_labels = vec![0u8; 2 * n_vertices];
@@ -491,6 +546,7 @@ impl BlossomData {
         let allowed_edge: Vec<bool> = vec![false; n_edges];
         BlossomData {
             n_vertices,
+            n_edges,
             blossom_labels,
             label_endpoints,
             blossom_endpoints,
@@ -507,6 +563,13 @@ impl BlossomData {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.blossom_labels = vec![0; 2 * self.n_vertices];
+        self.best_edge = vec![-1; 2 * self.n_vertices];
+        self.blossom_best_edges = vec![Vec::new(); self.n_vertices];
+        self.allowed_edge = vec![false; self.n_edges];
+    }
+
     pub fn slack(
         &self,
         edge_idx: usize,
@@ -517,23 +580,134 @@ impl BlossomData {
         self.dual_soln[i] + self.dual_soln[j] - 2.0 * weight_matrix.get_ix(i, j)
     }
 
+    pub fn compute_delta_vertices(&self) -> f64 {
+        let mut d = f64::max_value();
+        for i in 0..self.n_vertices {
+            if self.dual_soln[i] < d {
+                d = self.dual_soln[i];
+            }
+        }
+        d
+    }
+
+    pub fn compute_delta_s_vertex_free_vertex(
+        &self,
+        update_mode: i8,
+        delta: f64,
+        edges: &Vec<(usize, usize)>,
+        weight_matrix: &SquareMatrix<f64>,
+    ) -> (i8, f64, usize) {
+        let mut d = delta;
+        let mut ix = 0usize;
+        let um = update_mode;
+        for v in 0..self.n_vertices {
+            if self.blossom_labels[self.blossom_id[v]] == 0 && self.best_edge[v] != -1 {
+                let de = self.slack(self.best_edge[v] as usize, edges, weight_matrix);
+                if de < d || um == -1 {
+                    d = de;
+                    ix = self.best_edge[v] as usize;
+                }
+            }
+        }
+        (um, d, ix)
+    }
+
+    pub fn compute_delta_s_blossoms(
+        &self,
+        update_mode: i8,
+        delta: f64,
+        best_edge_idx: usize,
+        edges: &Vec<(usize, usize)>,
+        weight_matrix: &SquareMatrix<f64>,
+    ) -> (i8, f64, usize) {
+        let mut d = delta;
+        let mut ix = best_edge_idx;
+        let mut um = update_mode;
+        for b in 0..2 * self.n_vertices {
+            if self.blossom_parent[b] == -1
+                && self.blossom_labels[b] == 1
+                && self.best_edge[b] != -1
+            {
+                let edge_idx = self.best_edge[b] as usize;
+                let best_slack = 0.5 * self.slack(edge_idx, edges, weight_matrix);
+                if best_slack < d || um == -1 {
+                    d = best_slack;
+                    ix = edge_idx;
+                }
+            }
+        }
+        (um, d, ix)
+    }
+
+    pub fn compute_delta_t_blossoms(
+        &self,
+        update_mode: i8,
+        delta: f64,
+        edges: &Vec<(usize, usize)>,
+        weight_matrix: &SquareMatrix<f64>,
+    ) -> (i8, usize, f64) {
+        let mut d = delta;
+        let mut um = update_mode;
+        let mut blossom = 0;
+        for b in self.n_vertices..2 * self.n_vertices {
+            if self.blossom_base[b] >= 0
+                && self.blossom_parent[b] == -1
+                && self.blossom_labels[b] == 2
+            {
+                if self.dual_soln[b] < d || um == -1 {
+                    d = self.dual_soln[b];
+                    um = 4;
+                    blossom = b;
+                }
+            }
+        }
+        (um, blossom, d)
+    }
+
+    pub fn update_dual_soln(&mut self, delta: f64) {
+        for v in 0..self.n_vertices {
+            let label = self.blossom_labels[self.blossom_id[v]];
+            if label == 1 {
+                self.dual_soln[v] -= delta;
+            } else if label == 2 {
+                self.dual_soln[v] += delta;
+            }
+        }
+        for b in self.n_vertices..2 * self.n_vertices {
+            if self.blossom_base[b] >= 0 && self.blossom_parent[b] == -1 {
+                if self.blossom_labels[b] == 1 {
+                    self.dual_soln[b] += delta;
+                } else if self.blossom_labels[b] == 2 {
+                    self.dual_soln[b] -= delta;
+                }
+            }
+        }
+    }
+
+    pub fn s_blossom_is_tight(&mut self, blossom_id: usize) -> bool {
+        self.blossom_parent[blossom_id] == -1
+            && self.blossom_base[blossom_id] >= 0
+            && self.blossom_labels[blossom_id] == 1
+            && self.dual_soln[blossom_id] < 1e-12
+    }
+
     pub fn collect_leaves(&self, current_blossom: usize) -> Vec<usize> {
         // another heuristic to balance cache hits vs heap allocations
-        let mut leaves = Vec::with_capacity(self.n_vertices / 8);
+        let mut leaves = Vec::with_capacity(self.n_vertices >> 3);
         for v in BlossomLeaves::new(current_blossom, &self) {
             leaves.push(v);
         }
         leaves
     }
 
-    pub fn assign_label<'a, I: Iterator<Item = usize>>(
+    pub fn assign_label<'a>(
         &'a mut self,
-        queue: I,
+        stack: &'a mut VertexIterator<'a>,
         vertex: usize,
         label: u8,
         endpoint: i64,
         matching: &Vec<i64>,
-    ) -> Chain<I, BlossomLeaves<'a>> {
+    ) {
         let b = self.blossom_id[vertex];
         assert_eq!(self.blossom_labels[vertex], 0);
         assert_eq!(self.blossom_labels[b], 0);
@@ -544,12 +718,12 @@ impl BlossomData {
         self.best_edge[vertex] = -1;
         self.best_edge[b] = -1;
         if label == 1 {
-            queue.chain(BlossomLeaves::new(b, self))
+            stack.chain(LeafContainer::DFS(BlossomLeaves::new(b, self)));
         } else if label == 2 {
             let base = self.blossom_base[b] as usize;
             assert!(matching[base] >= 0);
             self.assign_label(
-                queue,
+                stack,
                 self.label_endpoints[matching[base] as usize] as usize,
                 1,
                 matching[base] ^ 1,
@@ -564,8 +738,8 @@ impl BlossomData {
         &mut self,
         v: usize,
         w: usize,
-        endpoints: Vec<i64>,
-        matching: Vec<i64>,
+        endpoints: &Vec<i64>,
+        matching: &Vec<i64>,
     ) -> Option<usize> {
         let mut v = v as i64;
         let mut w = w as i64;
@@ -604,9 +778,9 @@ impl BlossomData {
         None
     }
 
-    pub fn add_blossom<'a, I: Iterator<Item = usize>>(
+    pub fn add_blossom<'a>(
         &'a mut self,
-        queue: I,
+        stack: &'a mut VertexIterator<'a>,
         base: usize,
         edge_idx: usize,
         edges: &Vec<(usize, usize)>,
@@ -614,7 +788,7 @@ impl BlossomData {
         endpoints: &Vec<usize>,
         nbrhd_endpoints: &Vec<Vec<usize>>,
         weight_matrix: &SquareMatrix<f64>,
-    ) -> Chain<I, IntoIter<usize>> {
+    ) {
         let (mut v, mut w) = edges[edge_idx];
         let bb = self.blossom_id[base];
         let mut bv = self.blossom_id[v];
@@ -734,12 +908,12 @@ impl BlossomData {
             }
         }
 
-        queue.chain(t_leaves)
+        stack.chain(LeafContainer::Flat(t_leaves));
     }
 
-    pub fn expand_blossom<I: Iterator<Item = usize>>(
-        &mut self,
-        queue: I,
+    pub fn expand_blossom<'a>(
+        &'a mut self,
+        stack: &'a mut VertexIterator<'a>,
         blossom_id: usize,
         endstage: bool,
         endpoints: &Vec<usize>,
@@ -751,7 +925,7 @@ impl BlossomData {
             if c < self.n_vertices {
                 self.blossom_id[c] = c
             } else if endstage && self.dual_soln[c] < 1e-12 {
-                self.expand_blossom(queue, c, endstage, endpoints, matching);
+                self.expand_blossom(stack, c, endstage, endpoints, matching);
             } else {
                 let leaves: Vec<usize> = self.collect_leaves(c);
                 for v in leaves {
@@ -780,7 +954,7 @@ impl BlossomData {
                     self.blossom_labels[endpoints[ix]] = 0;
                     self.blossom_labels
                         [endpoints[(self.blossom_endpoints[blossom_id][k] ^ 1) as usize]] = 0;
-                    self.assign_label(queue, endpoints[ix], 2, endpoint, matching);
+                    let stack = self.assign_label(stack, endpoints[ix], 2, endpoint, matching);
                     self.allowed_edge[(self.blossom_endpoints[blossom_id][k] / 2) as usize] = true;
                     k += 1;
                     endpoint = self.blossom_endpoints[blossom_id][k];
@@ -797,6 +971,8 @@ impl BlossomData {
                 self.label_endpoints[bv] = endpoint;
                 self.best_edge[bv] = -1;
 
+                // why not start at 0 here???
+                // careful!
                 k = 1;
                 while self.blossom_children[blossom_id][j] != entry_child {
                     bv = self.blossom_children[blossom_id][j];
@@ -816,12 +992,13 @@ impl BlossomData {
                                 assert_eq!(self.blossom_labels[v], 2);
                                 assert_eq!(self.blossom_id[v], bv);
                                 self.blossom_labels[v] = 0;
-                                self.blossom_labels[endpoints[matching[self.blossom_base[bv] as usize] as usize]] = 0;
-                                self.assign_label(queue, v, 2, endpoint, matching);
+                                self.blossom_labels[endpoints
+                                    [matching[self.blossom_base[bv] as usize] as usize]] = 0;
+                                let stack = self.assign_label(stack, v, 2, endpoint, matching);
                             }
                         }
+                        k += 1;
                     }
-                    k += 1;
                 }
             } else {
                 let mut k = j;
@@ -830,7 +1007,7 @@ impl BlossomData {
                     self.blossom_labels[endpoints[ix]] = 0;
                     self.blossom_labels
                         [endpoints[(self.blossom_endpoints[blossom_id][k - 1]) as usize]] = 0;
-                    self.assign_label(queue, endpoints[ix], 2, endpoint, matching);
+                    let stack = self.assign_label(stack, endpoints[ix], 2, endpoint, matching);
                     self.allowed_edge[(self.blossom_endpoints[blossom_id][k - 1] / 2) as usize] =
                         true;
                     k -= 1;
@@ -845,8 +1022,184 @@ impl BlossomData {
                 self.blossom_labels[bv] = 2;
                 self.label_endpoints[endpoints[ix]] = endpoint;
                 self.label_endpoints[bv] = endpoint;
+                self.best_edge[bv] = -1;
+
+                k = self.blossom_children[blossom_id].len() - 1;
+                while self.blossom_children[blossom_id][j] != entry_child {
+                    bv = self.blossom_children[blossom_id][j];
+                    if self.blossom_labels[bv] == 1 {
+                        k -= 1;
+                    } else {
+                        let mut v = None;
+                        for leaf in BlossomLeaves::new(bv, &self) {
+                            if self.blossom_labels[leaf] != 0 {
+                                v = Some(leaf);
+                                break;
+                            }
+                        }
+                        match v {
+                            None => continue,
+                            Some(v) => {
+                                assert_eq!(self.blossom_labels[v], 2);
+                                assert_eq!(self.blossom_id[v], bv);
+                                self.blossom_labels[v] = 0;
+                                self.blossom_labels[endpoints
+                                    [matching[self.blossom_base[bv] as usize] as usize]] = 0;
+                                self.assign_label(stack, v, 2, endpoint, matching);
+                            }
+                        }
+                        k -= 1;
+                    }
+                }
+            }
+        }
+
+        // recycle the blossom id
+        self.blossom_labels[blossom_id] = 0;
+        self.label_endpoints[blossom_id] = -1;
+        self.blossom_base[blossom_id] = -1;
+        self.blossom_best_edges[blossom_id] = Vec::new();
+        self.best_edge[blossom_id] = -1;
+        self.unused_blossoms.push(blossom_id);
+    }
+
+    pub fn augment_blossom(
+        &mut self,
+        blossom_id: usize,
+        vertex: usize,
+        endpoints: &Vec<usize>,
+        matching: &mut Vec<i64>,
+    ) {
+        let mut t = vertex;
+        while self.blossom_parent[t] as usize != blossom_id {
+            t = self.blossom_parent[t] as usize;
+        }
+        if t >= self.n_vertices {
+            self.augment_blossom(t, vertex, endpoints, matching);
+        }
+
+        // we went an arbitrary number of steps up the tree
+        // why would blossom_id be a direct child?
+        let i = self.blossom_children[blossom_id]
+            .iter()
+            .position(|c| *c == t)
+            .unwrap();
+        let mut j = i;
+        if i % 2 == 1 {
+            while j < self.blossom_children[blossom_id].len() {
+                j += 1;
+                t = self.blossom_children[blossom_id][j];
+                let p = self.blossom_endpoints[blossom_id][j] as usize;
+                let p_parity = p ^ 1;
+                if t >= self.n_vertices {
+                    self.augment_blossom(t, endpoints[p], endpoints, matching);
+                }
+
+                j += 1;
+                t = self.blossom_children[blossom_id][j];
+                if t >= self.n_vertices {
+                    self.augment_blossom(t, endpoints[p_parity], endpoints, matching);
+                }
+
+                matching[endpoints[p]] = p_parity as i64;
+                matching[endpoints[p_parity]] = p as i64;
+            }
+        } else {
+            while j > 0 {
+                j -= 1;
+                t = self.blossom_children[blossom_id][j];
+                let p = (self.blossom_endpoints[blossom_id][j - 1] ^ 1) as usize;
+                let p_parity = p ^ 1;
+                if t >= self.n_vertices {
+                    self.augment_blossom(t, endpoints[p], endpoints, matching);
+                }
+
+                j -= 1;
+                t = self.blossom_children[blossom_id][j];
+                if t >= self.n_vertices {
+                    self.augment_blossom(t, endpoints[p_parity], endpoints, matching);
+                }
+
+                matching[endpoints[p]] = p_parity as i64;
+                matching[endpoints[p_parity]] = p as i64;
+            }
+        }
+
+        // better to use BTReeSets?
+        self.blossom_children[blossom_id].remove(i);
+        self.blossom_endpoints[blossom_id].remove(i);
+        self.blossom_base[blossom_id] = self.blossom_base[self.blossom_children[blossom_id][0]];
+        assert_eq!(self.blossom_base[blossom_id] as usize, vertex);
+    }
+
+    pub fn augment_matching(
+        &mut self,
+        edge_idx: usize,
+        edges: &Vec<(usize, usize)>,
+        endpoints: &Vec<usize>,
+        matching: &mut Vec<i64>,
+    ) {
+        let (v, w) = edges[edge_idx];
+        let (mut s, mut p) = (v, 2 * edge_idx + 1);
+        loop {
+            let bs = self.blossom_id[s];
+            assert_eq!(self.blossom_labels[bs], 1);
+            assert_eq!(
+                self.label_endpoints[bs],
+                matching[self.blossom_base[bs] as usize]
+            );
+            if bs >= self.n_vertices {
+                self.augment_blossom(bs, s, endpoints, matching);
+            }
+            matching[s] = p as i64;
+
+            if self.label_endpoints[bs] == -1 {
+                break;
             }
 
+            let t = endpoints[self.label_endpoints[bs] as usize];
+            let bt = self.blossom_id[t];
+            assert_eq!(self.blossom_labels[bt], 2);
+            assert!(self.label_endpoints[bt] >= 0);
+            s = endpoints[self.label_endpoints[bt] as usize];
+            let j = endpoints[(self.label_endpoints[bt] as usize) ^ 1];
+            assert_eq!(self.blossom_base[bt] as usize, t);
+            if bt >= self.n_vertices {
+                self.augment_blossom(bt, j, endpoints, matching);
+            }
+            matching[j] = self.label_endpoints[bt];
+            p = (self.label_endpoints[bt] ^ 1) as usize;
+        }
+
+        let (mut s, mut p) = (w, 2 * edge_idx);
+        loop {
+            let bs = self.blossom_id[s];
+            assert_eq!(self.blossom_labels[bs], 1);
+            assert_eq!(
+                self.label_endpoints[bs],
+                matching[self.blossom_base[bs] as usize]
+            );
+            if bs >= self.n_vertices {
+                self.augment_blossom(bs, s, endpoints, matching);
+            }
+            matching[s] = p as i64;
+
+            if self.label_endpoints[bs] == -1 {
+                break;
+            }
+
+            let t = endpoints[self.label_endpoints[bs] as usize];
+            let bt = self.blossom_id[t];
+            assert_eq!(self.blossom_labels[bt], 2);
+            assert!(self.label_endpoints[bt] >= 0);
+            s = endpoints[self.label_endpoints[bt] as usize];
+            let j = endpoints[(self.label_endpoints[bt] as usize) ^ 1];
+            assert_eq!(self.blossom_base[bt] as usize, t);
+            if bt >= self.n_vertices {
+                self.augment_blossom(bt, j, endpoints, matching);
+            }
+            matching[j] = self.label_endpoints[bt];
+            p = (self.label_endpoints[bt] ^ 1) as usize;
         }
     }
 }
