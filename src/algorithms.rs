@@ -7,7 +7,7 @@ use std::{
 use num::{pow, Bounded, Float, Zero};
 
 use crate::types::{
-    BlossomData, Edge, Graph, Neighborhood, RootedSubGraphForest, SquareMatrix, VertexIterator,
+    BlossomData, Edge, Graph, Neighborhood, RootedSubGraphForest, SquareMatrix,
 };
 
 pub fn floyd_warshall<W: Zero + Bounded + PartialOrd + Copy + Sized>(
@@ -414,7 +414,7 @@ pub fn max_cardinality_matching<W, N: Neighborhood + FromIterator<usize> + Clone
 pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
     graph: &Graph<f64, N>,
     max_cardinality: bool
-) -> Vec<usize> {
+) -> Vec<i64> {
     // not modified during algorithm iteration
     let n_vertices = graph.vertices.len();
     let weight_matrix = match &graph.weight_matrix {
@@ -440,9 +440,9 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
     let mut blossom_data = BlossomData::new(n_vertices, edges.len());
     let mut matching = vec![-1i64; n_vertices];
 
-    for t in 0..n_vertices {
+    for _ in 0..n_vertices {
         blossom_data.clear();
-        let mut stack = VertexIterator::new();
+        let mut stack = Vec::with_capacity(n_vertices);
 
         for v in 0..n_vertices {
             let id = blossom_data.blossom_id[v] as usize;
@@ -454,10 +454,10 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
 
         let mut augmented = false;
         loop {
-            while let Some(v) = stack.next() {
+            while let Some(v) = stack.pop() {
                 assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[v]], 1);
 
-                for p in neighborhood_endpoints[v] {
+                for &p in neighborhood_endpoints[v].iter() {
                     let edge_idx = p / 2;
                     let w = endpoints[p];
                     if blossom_data.blossom_id[v] == blossom_data.blossom_id[w] {
@@ -466,7 +466,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
 
                     let mut edge_slack = 0.0;
                     if !blossom_data.allowed_edge[edge_idx] {
-                        edge_slack = blossom_data.slack(edge_idx, edges, weight_matrix)
+                        edge_slack = blossom_data.slack(edge_idx, edges, weight_matrix);
                         if edge_slack <= 0.0 {
                             blossom_data.allowed_edge[edge_idx] = true;
                         }
@@ -475,7 +475,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                     let label = blossom_data.blossom_labels[blossom_data.blossom_id[w]];
                     if blossom_data.allowed_edge[edge_idx] {
                         if label == 0 {
-                            blossom_data.assign_label(stack, w, 2, p ^ 1, matching);
+                            blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &matching);
                         } else if label == 1 {
                             let base = blossom_data
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
@@ -488,7 +488,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                                 }
                                 Some(r) => {
                                     blossom_data.add_blossom(
-                                        stack,
+                                        &mut stack,
                                         r,
                                         edge_idx,
                                         edges,
@@ -572,5 +572,5 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
         }
     }
 
-    matching.iter().map(|v| *v as usize).collect()
+    matching
 }

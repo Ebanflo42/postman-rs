@@ -469,60 +469,6 @@ impl<'a> BlossomLeaves<'a> {
     }
 }
 
-enum LeafContainer<'a> {
-    Flat(Vec<usize>),
-    DFS(BlossomLeaves<'a>),
-    One(usize),
-}
-
-pub struct VertexIterator<'a> {
-    iters: Vec<LeafContainer<'a>>,
-}
-
-impl<'a> Iterator for VertexIterator<'a> {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.iters.last() {
-            None => None,
-            Some(it) => match it {
-                LeafContainer::Flat(v) => match v.pop() {
-                    None => {
-                        self.iters.pop();
-                        self.next()
-                    }
-                    Some(x) => Some(x),
-                },
-                LeafContainer::DFS(b) => match b.next() {
-                    None => {
-                        self.iters.pop();
-                        self.next()
-                    }
-                    Some(x) => Some(x),
-                },
-                LeafContainer::One(x) => {
-                    self.iters.pop();
-                    Some(*x)
-                }
-            },
-        }
-    }
-}
-
-impl<'a> VertexIterator<'a> {
-    pub fn new() -> Self {
-        VertexIterator { iters: Vec::new() }
-    }
-
-    pub fn chain(&mut self, other: LeafContainer<'a>) {
-        self.iters.push(other);
-    }
-
-    pub fn push(&mut self, x: usize) {
-        self.iters.push(LeafContainer::One(x));
-    }
-}
-
 impl BlossomData {
     pub fn new(n_vertices: usize, n_edges: usize) -> Self {
         let blossom_labels = vec![0u8; 2 * n_vertices];
@@ -702,7 +648,7 @@ impl BlossomData {
 
     pub fn assign_label<'a>(
         &'a mut self,
-        stack: &'a mut VertexIterator<'a>,
+        stack: &mut Vec<usize>,
         vertex: usize,
         label: u8,
         endpoint: i64,
@@ -718,7 +664,7 @@ impl BlossomData {
         self.best_edge[vertex] = -1;
         self.best_edge[b] = -1;
         if label == 1 {
-            stack.chain(LeafContainer::DFS(BlossomLeaves::new(b, self)));
+            stack.append(&mut self.collect_leaves(b));
         } else if label == 2 {
             let base = self.blossom_base[b] as usize;
             assert!(matching[base] >= 0);
@@ -738,7 +684,7 @@ impl BlossomData {
         &mut self,
         v: usize,
         w: usize,
-        endpoints: &Vec<i64>,
+        endpoints: &Vec<usize>,
         matching: &Vec<i64>,
     ) -> Option<usize> {
         let mut v = v as i64;
@@ -763,11 +709,11 @@ impl BlossomData {
             if self.label_endpoints[b] == -1 {
                 v = -1;
             } else {
-                v = endpoints[self.label_endpoints[b] as usize];
+                v = endpoints[self.label_endpoints[b] as usize] as i64;
                 b = self.blossom_id[v as usize];
                 assert_eq!(self.blossom_labels[b], 2);
                 assert!(self.label_endpoints[b] >= 0);
-                v = endpoints[self.label_endpoints[b] as usize];
+                v = endpoints[self.label_endpoints[b] as usize] as i64;
             }
             if w != -1 {
                 let wtmp = w;
@@ -780,7 +726,7 @@ impl BlossomData {
 
     pub fn add_blossom<'a>(
         &'a mut self,
-        stack: &'a mut VertexIterator<'a>,
+        stack: &mut Vec<usize>,
         base: usize,
         edge_idx: usize,
         edges: &Vec<(usize, usize)>,
@@ -908,12 +854,12 @@ impl BlossomData {
             }
         }
 
-        stack.chain(LeafContainer::Flat(t_leaves));
+        stack.append(&mut t_leaves);
     }
 
     pub fn expand_blossom<'a>(
         &'a mut self,
-        stack: &'a mut VertexIterator<'a>,
+        stack: &mut Vec<usize>,
         blossom_id: usize,
         endstage: bool,
         endpoints: &Vec<usize>,
