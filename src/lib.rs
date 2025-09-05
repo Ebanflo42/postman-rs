@@ -105,4 +105,13 @@ mod tests {
         //assert_eq!(matching, true_matching);
     }
 
+    #[test]
+    fn max_weight_matching1() {
+        let weighted_edges = vec![ (1,2,5.), (2,3,11.), (3,4,5.) ];
+        let vertices = (0usize..5).collect();
+        let graph: Graph<f64, BTreeSet<usize>> = Graph::from_weighted_edges_and_vertices(&weighted_edges, &vertices, false);
+        let matching = max_weight_matching(&graph, false);
+        println!("{:?}", matching);
+    }
+
 }
