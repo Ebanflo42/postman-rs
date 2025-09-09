@@ -6,9 +6,7 @@ use std::{
 
 use num::{pow, Bounded, Float, Zero};
 
-use crate::types::{
-    BlossomData, Edge, Graph, Neighborhood, RootedSubGraphForest, SquareMatrix,
-};
+use crate::types::{BlossomData, Edge, Graph, Neighborhood, RootedSubGraphForest, SquareMatrix};
 
 pub fn floyd_warshall<W: Zero + Bounded + PartialOrd + Copy + Sized>(
     weighted_edge_list: &Vec<Edge<W>>,
@@ -413,7 +411,7 @@ pub fn max_cardinality_matching<W, N: Neighborhood + FromIterator<usize> + Clone
 
 pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
     graph: &Graph<f64, N>,
-    max_cardinality: bool
+    max_cardinality: bool,
 ) -> Vec<i64> {
     // not modified during algorithm iteration
     let n_vertices = graph.vertices.len();
@@ -440,9 +438,12 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
     let mut blossom_data = BlossomData::new(n_vertices, edges.len());
     let mut matching = vec![-1i64; n_vertices];
 
-    for _ in 0..n_vertices {
+    for t in 0..n_vertices {
+        println!("STAGE: {}", t);
+
         blossom_data.clear();
         let mut stack = Vec::with_capacity(n_vertices);
+        //dbg!(blossom_data.allowed_edge.clone());
 
         for v in 0..n_vertices {
             let id = blossom_data.blossom_id[v] as usize;
@@ -451,12 +452,20 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                 blossom_data.assign_label(&mut stack, v, 1, -1, &matching);
             }
         }
+        //dbg!(blossom_data.allowed_edge.clone());
 
         let mut augmented = false;
         loop {
-            while let Some(v) = stack.pop() {
+            println!("SUBSTAGE");
+            println!("Stack len = {}", stack.len());
+            while stack.len() > 0 && !augmented {
+                let v = stack.pop().unwrap();
+                println!("POP: {}", v);
+                dbg!(blossom_data.blossom_labels.clone());
+
                 assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[v]], 1);
 
+                dbg!(neighborhood_endpoints[v].clone());
                 for &p in neighborhood_endpoints[v].iter() {
                     let edge_idx = p / 2;
                     let w = endpoints[p];
@@ -473,6 +482,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                     }
 
                     let label = blossom_data.blossom_labels[blossom_data.blossom_id[w]];
+                    dbg!(label);
                     if blossom_data.allowed_edge[edge_idx] {
                         if label == 0 {
                             blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &matching);
@@ -481,8 +491,12 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
                             match base {
                                 None => {
-                                    blossom_data
-                                        .augment_matching(edge_idx, edges, &endpoints, &mut matching);
+                                    blossom_data.augment_matching(
+                                        edge_idx,
+                                        edges,
+                                        &endpoints,
+                                        &mut matching,
+                                    );
                                     augmented = true;
                                     break;
                                 }
@@ -506,68 +520,104 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                         }
                     } else if label == 1 {
                         let b = blossom_data.blossom_id[v];
-                        if blossom_data.best_edge[b] == -1 || edge_slack < blossom_data.slack(blossom_data.best_edge[b] as usize, &edges, &weight_matrix) {
+                        //dbg!(blossom_data.best_edge[b]);
+                        //dbg!((edge_slack, blossom_data.slack(blossom_data.best_edge[b] as usize, &edges, &weight_matrix)));
+                        if blossom_data.best_edge[b] < 0
+                            || edge_slack
+                                < blossom_data.slack(
+                                    blossom_data.best_edge[b] as usize,
+                                    &edges,
+                                    &weight_matrix,
+                                )
+                        {
                             blossom_data.best_edge[b] = edge_idx as i64;
+                            //dbg!(b, blossom_data.best_edge[b]);
                         }
                     } else if label == 0 {
-                        if blossom_data.best_edge[w] == -1 || edge_slack < blossom_data.slack(blossom_data.best_edge[w] as usize, &edges, &weight_matrix) {
+                        if blossom_data.best_edge[w] < 0
+                            || edge_slack
+                                < blossom_data.slack(
+                                    blossom_data.best_edge[w] as usize,
+                                    &edges,
+                                    &weight_matrix,
+                                )
+                        {
                             blossom_data.best_edge[w] = edge_idx as i64;
                         }
                     }
                 }
-                if augmented {
-                    break;
-                }
-
-                let mut update_mode = -1i8;
-                let mut delta = <f64 as Bounded>::min_value();
-                if !max_cardinality {
-                    delta = blossom_data.compute_delta_vertices();
-                    update_mode = 1;
-                }
-                let (update_mode, delta, best_edge) = blossom_data.compute_delta_s_vertex_free_vertex(update_mode, delta, &edges, &weight_matrix);
-                let (update_mode, delta, best_edge) = blossom_data.compute_delta_s_blossoms(update_mode, delta, best_edge, edges, weight_matrix);
-                let (mut update_mode, delta_blossom, mut delta) = blossom_data.compute_delta_t_blossoms(update_mode, delta, edges, weight_matrix);
-
-                if update_mode == -1 {
-                    assert!(max_cardinality);
-                    // no more updates necessary
-                    update_mode == 1;
-                    delta = if delta < 0.0 {0.0} else {delta};
-                }
-
-                blossom_data.update_dual_soln(delta);
-
-                if update_mode == 1 {
-                    break;
-                } else if update_mode == 2 {
-                    blossom_data.allowed_edge[best_edge] = true;
-                    let (mut i, mut j) = edges[best_edge];
-                    if blossom_data.blossom_labels[blossom_data.blossom_id[i]] == 0 {
-                        (j, i) = (i, j);
-                    }
-                    assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[i]], 1);
-                    stack.push(i);
-                } else if update_mode == 3 {
-                    blossom_data.allowed_edge[best_edge] = true;
-                    let (i, j) = edges[best_edge];
-                    assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[i]], 1);
-                    stack.push(i);
-                } else if update_mode == 4 {
-                    blossom_data.expand_blossom(&mut stack, delta_blossom, false, &endpoints, &matching);
-                }
             }
-
-            // no more augmenting path can be found
-            if !augmented {
+            if augmented {
+                println!("AUGMENTED");
                 break;
             }
 
-            // end of this stage, expand all S-blossoms which have dual_soln = 0
-            for b in n_vertices..2*n_vertices {
-                if blossom_data.s_blossom_is_tight(b) {
-                    blossom_data.expand_blossom(&mut stack, b, true, &endpoints, &matching);
+            let mut update_mode = -1i8;
+            let mut delta = <f64 as Bounded>::min_value();
+            if !max_cardinality {
+                delta = blossom_data.compute_delta_vertices();
+                update_mode = 1;
+            }
+            let (update_mode, delta, best_edge) = blossom_data.compute_delta_s_vertex_free_vertex(
+                update_mode,
+                delta,
+                &edges,
+                &weight_matrix,
+            );
+            let (update_mode, delta, best_edge) = blossom_data.compute_delta_s_blossoms(
+                update_mode,
+                delta,
+                best_edge,
+                edges,
+                weight_matrix,
+            );
+            let (mut update_mode, delta_blossom, mut delta) =
+                blossom_data.compute_delta_t_blossoms(update_mode, delta, edges, weight_matrix);
+
+            if update_mode == -1 {
+                assert!(max_cardinality);
+                // no more updates necessary
+                update_mode = 1;
+                delta = if delta < 0.0 { 0.0 } else { delta };
+            }
+            dbg!(update_mode);
+            blossom_data.update_dual_soln(delta);
+
+            if update_mode == 1 {
+                break;
+            } else if update_mode == 2 {
+                blossom_data.allowed_edge[best_edge] = true;
+                let (mut i, mut j) = edges[best_edge];
+                if blossom_data.blossom_labels[blossom_data.blossom_id[i]] == 0 {
+                    (j, i) = (i, j);
                 }
+                assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[i]], 1);
+                stack.push(i);
+            } else if update_mode == 3 {
+                blossom_data.allowed_edge[best_edge] = true;
+                let (i, j) = edges[best_edge];
+                assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[i]], 1);
+                stack.push(i);
+            } else if update_mode == 4 {
+                blossom_data.expand_blossom(
+                    &mut stack,
+                    delta_blossom,
+                    false,
+                    &endpoints,
+                    &matching,
+                );
+            }
+        }
+
+        // no more augmenting path can be found
+        if !augmented {
+            break;
+        }
+
+        // end of this stage, expand all S-blossoms which have dual_soln = 0
+        for b in n_vertices..2 * n_vertices {
+            if blossom_data.s_blossom_is_tight(b) {
+                blossom_data.expand_blossom(&mut stack, b, true, &endpoints, &matching);
             }
         }
     }

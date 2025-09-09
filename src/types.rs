@@ -654,6 +654,7 @@ impl BlossomData {
         endpoint: i64,
         matching: &Vec<i64>,
     ) {
+        println!("assign_label: {} {} {}", vertex, label, endpoint);
         let b = self.blossom_id[vertex];
         assert_eq!(self.blossom_labels[vertex], 0);
         assert_eq!(self.blossom_labels[b], 0);
@@ -664,6 +665,7 @@ impl BlossomData {
         self.best_edge[vertex] = -1;
         self.best_edge[b] = -1;
         if label == 1 {
+            println!("Append: {:?}", self.collect_leaves(b));
             stack.append(&mut self.collect_leaves(b));
         } else if label == 2 {
             let base = self.blossom_base[b] as usize;
