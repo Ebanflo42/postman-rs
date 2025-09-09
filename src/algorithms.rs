@@ -487,9 +487,9 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                         if label == 0 {
                             blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &matching);
                         } else if label == 1 {
-                            let base = blossom_data
+                            let root = blossom_data
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
-                            match base {
+                            match root {
                                 None => {
                                     blossom_data.augment_matching(
                                         edge_idx,
@@ -553,7 +553,6 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
             }
 
             let (delta, best_edge, update_blossom) = blossom_data.determine_delta_and_update_mode(
-                &mut stack,
                 edges,
                 weight_matrix,
                 max_cardinality,
