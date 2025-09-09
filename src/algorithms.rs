@@ -552,60 +552,23 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                 break;
             }
 
-            let mut update_mode = -1i8;
-            let mut delta = <f64 as Bounded>::min_value();
-            if !max_cardinality {
-                delta = blossom_data.compute_delta_vertices();
-                update_mode = 1;
-            }
-            let (update_mode, delta, best_edge) = blossom_data.compute_delta_s_vertex_free_vertex(
-                update_mode,
-                delta,
-                &edges,
-                &weight_matrix,
-            );
-            let (update_mode, delta, best_edge) = blossom_data.compute_delta_s_blossoms(
-                update_mode,
-                delta,
-                best_edge,
+            let (delta, best_edge, update_blossom) = blossom_data.determine_delta_and_update_mode(
+                &mut stack,
                 edges,
                 weight_matrix,
+                max_cardinality,
             );
-            let (mut update_mode, delta_blossom, mut delta) =
-                blossom_data.compute_delta_t_blossoms(update_mode, delta, edges, weight_matrix);
-
-            if update_mode == -1 {
-                assert!(max_cardinality);
-                // no more updates necessary
-                update_mode = 1;
-                delta = if delta < 0.0 { 0.0 } else { delta };
-            }
-            dbg!(update_mode);
             blossom_data.update_dual_soln(delta);
-
-            if update_mode == 1 {
+            let must_break = blossom_data.update_blossom_structure(
+                &mut stack,
+                best_edge,
+                update_blossom,
+                edges,
+                &endpoints,
+                &matching,
+            );
+            if must_break {
                 break;
-            } else if update_mode == 2 {
-                blossom_data.allowed_edge[best_edge] = true;
-                let (mut i, mut j) = edges[best_edge];
-                if blossom_data.blossom_labels[blossom_data.blossom_id[i]] == 0 {
-                    (j, i) = (i, j);
-                }
-                assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[i]], 1);
-                stack.push(i);
-            } else if update_mode == 3 {
-                blossom_data.allowed_edge[best_edge] = true;
-                let (i, j) = edges[best_edge];
-                assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[i]], 1);
-                stack.push(i);
-            } else if update_mode == 4 {
-                blossom_data.expand_blossom(
-                    &mut stack,
-                    delta_blossom,
-                    false,
-                    &endpoints,
-                    &matching,
-                );
             }
         }
 
