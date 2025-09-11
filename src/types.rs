@@ -1,9 +1,6 @@
-use num::{Bounded, One};
+use num::Bounded;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
-use std::iter::{Chain, Copied};
-use std::slice::Iter;
-use std::vec::IntoIter;
 
 pub type Edge<W> = (usize, usize, W);
 
@@ -103,7 +100,7 @@ pub struct SquareMatrix<T> {
     pub len: usize,
 }
 
-impl<T: Sized + Copy> SquareMatrix<T> {
+impl<T: Sized + Copy + PartialOrd + Bounded> SquareMatrix<T> {
     pub fn from_weighted_edges(
         weighted_edges: &Vec<Edge<T>>,
         directed: bool,
@@ -142,6 +139,16 @@ impl<T: Sized + Copy> SquareMatrix<T> {
 
     pub fn set_ix(&mut self, i: usize, j: usize, val: T) {
         self.data[self.len * i + j] = val;
+    }
+
+    pub fn max_value(&self) -> T {
+        let mut m = T::min_value();
+        for &x in self.data.iter() {
+            if x > m {
+                m = x;
+            }
+        }
+        m
     }
 }
 
@@ -303,7 +310,7 @@ impl<N: Neighborhood + FromIterator<usize> + Clone> Graph<(), N> {
     }
 }
 
-impl<W: Bounded + Sized + Copy, N: Neighborhood + FromIterator<usize> + Clone> Graph<W, N> {
+impl<W: Bounded + Sized + Copy + PartialOrd, N: Neighborhood + FromIterator<usize> + Clone> Graph<W, N> {
     pub fn from_weighted_edges(edges: &Vec<Edge<W>>, directed: bool) -> Self {
         let vertices = get_vertex_set(&edges.iter().map(|e| (e.0, e.1)).collect());
         let mut adjacency_list = vec![N::new(); vertices.len()];
@@ -361,7 +368,7 @@ impl<W: Bounded + Sized + Copy, N: Neighborhood + FromIterator<usize> + Clone> G
         let weight_matrix = Some(SquareMatrix::from_weighted_edges(
             &edges,
             directed,
-            W::max_value(),
+            W::min_value(),
             Some(vertices.len()),
         ));
         let edges = Some(edges.into_iter().map(|e| (e.0, e.1)).collect());
@@ -524,7 +531,7 @@ impl<'a> BlossomLeaves<'a> {
 }
 
 impl BlossomData {
-    pub fn new(n_vertices: usize, n_edges: usize) -> Self {
+    pub fn new(n_vertices: usize, n_edges: usize, max_weight: f64) -> Self {
         let blossom_labels = vec![0u8; 2 * n_vertices];
         let label_endpoints = vec![-1i64; 2 * n_vertices];
         let blossom_endpoints = vec![Vec::new(); 2 * n_vertices];
@@ -538,7 +545,7 @@ impl BlossomData {
         let best_edge = vec![-1i64; 2 * n_vertices];
         let blossom_best_edges = vec![Vec::new(); 2 * n_vertices];
         let unused_blossoms = Vec::from_iter(n_vertices..2 * n_vertices);
-        let mut dual_soln = vec![<f64 as Bounded>::max_value(); n_vertices];
+        let mut dual_soln = vec![max_weight; n_vertices];
         for _ in 0..n_vertices {
             dual_soln.push(0.0);
         }
@@ -578,6 +585,9 @@ impl BlossomData {
         weight_matrix: &SquareMatrix<f64>,
     ) -> f64 {
         let (i, j) = edges[edge_idx];
+        dbg!(self.dual_soln[i], self.dual_soln[j]);
+        dbg!(weight_matrix.get_ix(i, j));
+        dbg!(self.dual_soln[i] + self.dual_soln[j]);
         self.dual_soln[i] + self.dual_soln[j] - 2.0 * weight_matrix.get_ix(i, j)
     }
 
@@ -809,6 +819,7 @@ impl BlossomData {
         endpoints: &Vec<usize>,
         matching: &Vec<i64>,
     ) -> Option<usize> {
+        println!("SCAN {} {}", v, w);
         let mut v = v as i64;
         let mut w = w as i64;
         let mut path = Vec::new();
@@ -822,7 +833,8 @@ impl BlossomData {
             }
             assert_eq!(self.blossom_labels[b], 1);
             path.push(b);
-            // why 5???
+            // label 5 here so we know something is wrong
+            // if we come back around to it
             self.blossom_labels[b] = 5;
             assert_eq!(
                 self.label_endpoints[b],
@@ -842,6 +854,9 @@ impl BlossomData {
                 w = v;
                 v = wtmp;
             }
+        }
+        for &b in path.iter() {
+            self.blossom_labels[b] = 1;
         }
         None
     }
@@ -1214,8 +1229,10 @@ impl BlossomData {
     ) {
         let (v, w) = edges[edge_idx];
         let (mut s, mut p) = (v, 2 * edge_idx + 1);
+        println!("AUGMENT MATCHING {} {} {}", edge_idx, v, w);
         loop {
             let bs = self.blossom_id[s];
+            println!("blossom_labels {:?}", self.blossom_labels.clone());
             assert_eq!(self.blossom_labels[bs], 1);
             assert_eq!(
                 self.label_endpoints[bs],

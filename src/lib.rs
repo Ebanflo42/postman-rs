@@ -111,6 +111,7 @@ mod tests {
         let vertices = (0usize..5).collect();
         let graph: Graph<f64, BTreeSet<usize>> = Graph::from_weighted_edges_and_vertices(&weighted_edges, &vertices, false);
         let matching = max_weight_matching(&graph, false);
+        assert_eq!(matching, vec![-1, -1, 3, 2, -1]);
         println!("{:?}", matching);
     }
 
