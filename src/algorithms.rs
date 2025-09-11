@@ -408,34 +408,40 @@ pub fn max_cardinality_matching<W, N: Neighborhood + FromIterator<usize> + Clone
     matching
 }
 
-pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
-    graph: &Graph<f64, N>,
+pub fn max_weight_matching(
+    weighted_edges: &Vec<(usize, usize, f64)>,
     max_cardinality: bool,
 ) -> Vec<i64> {
     // not modified during algorithm iteration
-    let n_vertices = graph.vertices.len();
-    let weight_matrix = match &graph.weight_matrix {
-        None => panic!("Minimum weight matching is only valid for weighted graphs."),
-        Some(w) => w,
-    };
-    let max_weight = weight_matrix.max_value();
-    let edges = match &graph.edges {
-        None => panic!("Graph should have its edges initialized."),
-        Some(es) => es,
-    };
+    let mut n_vertices = 0;
+    let mut max_weight = f64::min_value();
+    for &edge in weighted_edges.iter() {
+        if edge.0 == edge.1 || edge.0 < 0 || edge.1 < 0 {
+            panic!("Invalid edge {:?}", edge);
+        }
+        if edge.0 >= n_vertices {
+            n_vertices += 1;
+        }
+        if edge.1 >= n_vertices {
+            n_vertices += 1;
+        }
+        if edge.2 > max_weight {
+            max_weight = edge.2;
+        }
+    }
     let mut neighborhood_endpoints = vec![Vec::new(); n_vertices];
-    for (i, edge) in edges.iter().enumerate() {
+    for (i, edge) in weighted_edges.iter().enumerate() {
         neighborhood_endpoints[edge.0].push(2 * i + 1);
         neighborhood_endpoints[edge.1].push(2 * i);
     }
-    let mut endpoints = Vec::with_capacity(2 * edges.len());
-    for edge in edges.iter() {
+    let mut endpoints = Vec::with_capacity(2 * weighted_edges.len());
+    for edge in weighted_edges.iter() {
         endpoints.push(edge.0);
         endpoints.push(edge.1);
     }
 
     // modified during algorithm iteration
-    let mut blossom_data = BlossomData::new(n_vertices, edges.len(), max_weight);
+    let mut blossom_data = BlossomData::new(n_vertices, weighted_edges.len(), max_weight);
     let mut matching = vec![-1i64; n_vertices];
 
     for t in 0..n_vertices {
@@ -445,11 +451,13 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
         let mut stack = Vec::with_capacity(n_vertices);
         //dbg!(blossom_data.allowed_edge.clone());
 
+        // prepare to root a search tree at every unmatched vertex
+        // which is not contained in a contracted blossom
         for v in 0..n_vertices {
             let id = blossom_data.blossom_id[v] as usize;
             let label = blossom_data.blossom_labels[id];
             if matching[v] == -1 && label == 0 {
-                blossom_data.assign_label(&mut stack, v, 1, -1, &matching);
+                blossom_data.assign_label(&mut stack, v, 1, -1, &endpoints, &matching);
             }
         }
         //dbg!(blossom_data.allowed_edge.clone());
@@ -457,25 +465,27 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
         let mut augmented = false;
         loop {
             println!("SUBSTAGE");
-            println!("Stack len = {}", stack.len());
             while stack.len() > 0 && !augmented {
+                println!("STACK {:?}", stack);
                 let v = stack.pop().unwrap();
                 println!("POP: {}", v);
                 //dbg!(blossom_data.blossom_labels.clone());
 
                 assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[v]], 1);
 
-                //dbg!(neighborhood_endpoints[v].clone());
+                dbg!(neighborhood_endpoints[v].clone());
                 for &p in neighborhood_endpoints[v].iter() {
                     let edge_idx = p / 2;
                     let w = endpoints[p];
+                    println!("p v w blossom_id[v] blossom_id[w] {} {} {} {} {}", p, v, w, blossom_data.blossom_id[v], blossom_data.blossom_id[w]);
                     if blossom_data.blossom_id[v] == blossom_data.blossom_id[w] {
                         continue;
                     }
 
                     let mut edge_slack = 0.0;
+                    dbg!(p, edge_idx);
                     if !blossom_data.allowed_edge[edge_idx] {
-                        edge_slack = blossom_data.slack(edge_idx, edges, weight_matrix);
+                        edge_slack = blossom_data.slack(edge_idx, weighted_edges);
                         println!("edge_slack {}", edge_slack);
                         if edge_slack <= 1e-12 {
                             blossom_data.allowed_edge[edge_idx] = true;
@@ -487,7 +497,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                     //dbg!(label);
                     if blossom_data.allowed_edge[edge_idx] {
                         if label == 0 {
-                            blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &matching);
+                            blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &endpoints, &matching);
                         } else if label == 1 {
                             let root = blossom_data
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
@@ -495,7 +505,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                                 None => {
                                     blossom_data.augment_matching(
                                         edge_idx,
-                                        edges,
+                                        weighted_edges,
                                         &endpoints,
                                         &mut matching,
                                     );
@@ -507,11 +517,10 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                                         &mut stack,
                                         r,
                                         edge_idx,
-                                        edges,
                                         &matching,
                                         &endpoints,
                                         &neighborhood_endpoints,
-                                        &weight_matrix,
+                                        &weighted_edges,
                                     );
                                 }
                             }
@@ -528,8 +537,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                             || edge_slack
                                 < blossom_data.slack(
                                     blossom_data.best_edge[b] as usize,
-                                    &edges,
-                                    &weight_matrix,
+                                    weighted_edges
                                 )
                         {
                             blossom_data.best_edge[b] = edge_idx as i64;
@@ -540,8 +548,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                             || edge_slack
                                 < blossom_data.slack(
                                     blossom_data.best_edge[w] as usize,
-                                    &edges,
-                                    &weight_matrix,
+                                    weighted_edges
                                 )
                         {
                             blossom_data.best_edge[w] = edge_idx as i64;
@@ -555,8 +562,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
             }
 
             let (delta, best_edge, update_blossom) = blossom_data.determine_delta_and_update_mode(
-                edges,
-                weight_matrix,
+                weighted_edges,
                 max_cardinality,
             );
             blossom_data.update_dual_soln(delta);
@@ -564,7 +570,7 @@ pub fn max_weight_matching<N: Neighborhood + FromIterator<usize> + Clone>(
                 &mut stack,
                 best_edge,
                 update_blossom,
-                edges,
+                weighted_edges,
                 &endpoints,
                 &matching,
             );

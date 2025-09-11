@@ -1,12 +1,12 @@
-pub mod types;
 pub mod algorithms;
+pub mod types;
 
 #[cfg(test)]
 mod tests {
+    use crate::algorithms::*;
+    use crate::types::*;
     use std::collections::BTreeSet;
     use std::collections::HashSet;
-    use crate::types::*;
-    use crate::algorithms::*;
 
     #[test]
     fn floyd_warshall1() {
@@ -49,11 +49,21 @@ mod tests {
             (14, 15),
             (15, 11),
             (15, 16),
-            (16, 17)
+            (16, 17),
         ];
         let graph: Graph<(), Vec<usize>> = Graph::from_edges(&edges, false);
         let matching = max_cardinality_matching(&graph);
-        let true_matching: Vec<(usize, usize)> = vec![(0, 1), (2, 3), (8, 5), (6, 9), (4, 7), (10, 11), (12, 13), (14, 15), (16, 17)];
+        let true_matching: Vec<(usize, usize)> = vec![
+            (0, 1),
+            (2, 3),
+            (8, 5),
+            (6, 9),
+            (4, 7),
+            (10, 11),
+            (12, 13),
+            (14, 15),
+            (16, 17),
+        ];
         println!("{:?}", matching);
         assert_eq!(matching, true_matching);
     }
@@ -79,9 +89,19 @@ mod tests {
             (15, 11),
         ];
         let vertices = (0usize..17).collect();
-        let graph: Graph<(), BTreeSet<usize>> = Graph::from_edges_and_vertices(&edges, &vertices, false);
+        let graph: Graph<(), BTreeSet<usize>> =
+            Graph::from_edges_and_vertices(&edges, &vertices, false);
         let matching = max_cardinality_matching(&graph);
-        let true_matching: Vec<(usize, usize)> = vec![(0, 1), (2, 3), (8, 5), (6, 9), (4, 7), (10, 11), (12, 13), (14, 15)];
+        let true_matching: Vec<(usize, usize)> = vec![
+            (0, 1),
+            (2, 3),
+            (8, 5),
+            (6, 9),
+            (4, 7),
+            (10, 11),
+            (12, 13),
+            (14, 15),
+        ];
         println!("{:?}", matching);
         assert_eq!(matching, true_matching);
     }
@@ -95,10 +115,11 @@ mod tests {
             (14, 15),
             (15, 11),
             (15, 16),
-            (16, 17)
+            (16, 17),
         ];
         let vertices = (0usize..18).collect();
-        let graph: Graph<(), HashSet<usize>> = Graph::from_edges_and_vertices(&edges, &vertices, false);
+        let graph: Graph<(), HashSet<usize>> =
+            Graph::from_edges_and_vertices(&edges, &vertices, false);
         let matching = max_cardinality_matching(&graph);
         //let true_matching: Vec<(usize, usize)> = vec![(0, 1), (2, 3), (8, 5), (6, 9), (4, 7), (10, 11), (12, 13), (14, 15), (16, 17)];
         println!("{:?}", matching);
@@ -107,12 +128,31 @@ mod tests {
 
     #[test]
     fn max_weight_matching1() {
-        let weighted_edges = vec![ (1,2,5.), (2,3,11.), (3,4,5.) ];
-        let vertices = (0usize..5).collect();
-        let graph: Graph<f64, BTreeSet<usize>> = Graph::from_weighted_edges_and_vertices(&weighted_edges, &vertices, false);
-        let matching = max_weight_matching(&graph, false);
+        let weighted_edges = vec![(1, 2, 5.), (2, 3, 11.), (3, 4, 5.)];
+        //let vertices = (0usize..5).collect();
+        //let graph: Graph<f64, BTreeSet<usize>> =
+        //    Graph::from_weighted_edges_and_vertices(&weighted_edges, &vertices, false);
+        let matching = max_weight_matching(&weighted_edges, false);
         assert_eq!(matching, vec![-1, -1, 3, 2, -1]);
         println!("{:?}", matching);
     }
 
+    #[test]
+    fn max_weight_matching2() {
+        let weighted_edges = vec![
+            (1, 2, 9.),
+            (1, 3, 9.),
+            (2, 3, 10.),
+            (2, 4, 8.),
+            (3, 5, 8.),
+            (4, 5, 10.),
+            (5, 6, 6.),
+        ];
+        //let vertices = (0usize..11).collect();
+        //let graph: Graph<f64, BTreeSet<usize>> =
+        //    Graph::from_weighted_edges_and_vertices(&weighted_edges, &vertices, false);
+        let matching = max_weight_matching(&weighted_edges, false);
+        //assert_eq!(matching, vec![-1, -1, 3, 2, -1]);
+        println!("{:?}", matching);
+    }
 }
