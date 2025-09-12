@@ -735,12 +735,12 @@ impl BlossomData {
         self.best_edge[vertex] = -1;
         self.best_edge[b] = -1;
         if label == 1 {
-            println!("Append: {:?}", self.collect_leaves(b, false));
+            //println!("Append: {:?}", self.collect_leaves(b, false));
             stack.append(&mut self.collect_leaves(b, false));
         } else if label == 2 {
             let root = self.blossom_root[b] as usize;
             assert!(matching[root] >= 0);
-            println!("label endpoints {:?}", self.label_endpoints);
+            //println!("label endpoints {:?}", self.label_endpoints);
             self.assign_label(
                 stack,
                 endpoints[matching[root] as usize],
@@ -840,6 +840,7 @@ impl BlossomData {
             self.blossom_parent[bv] = b as i64;
             self.blossom_children[b].push(bv);
             self.blossom_endpoints[b].push(self.label_endpoints[bv]);
+            println!("BLOSSOM ENDPOINT {} PUSH {} {}", b, self.label_endpoints[bv], bv);
             assert!(
                 self.blossom_labels[bv] == 2
                     || (self.blossom_labels[bv] == 1
@@ -854,11 +855,13 @@ impl BlossomData {
         self.blossom_children[b] = self.blossom_children[b].iter().copied().rev().collect();
         self.blossom_endpoints[b] = self.blossom_endpoints[b].iter().copied().rev().collect();
         self.blossom_endpoints[b].push(2 * edge_idx as i64);
+        println!("BLOSSOM ENDPOINT {} PUSH {}", b, 2*edge_idx as i64);
 
         while bw != bb {
             self.blossom_parent[bw] = b as i64;
             self.blossom_children[b].push(bw);
-            self.blossom_endpoints[b].push(self.label_endpoints[bw]);
+            self.blossom_endpoints[b].push(self.label_endpoints[bw] ^ 1);
+            println!("BLOSSOM ENDPOINT {} PUSH {} {}", b, self.label_endpoints[bw] ^ 1, bw);
             assert!(
                 self.blossom_labels[bw] == 2
                     || (self.blossom_labels[bw] == 1
@@ -868,6 +871,7 @@ impl BlossomData {
             w = endpoints[self.label_endpoints[bw] as usize];
             bw = self.blossom_id[w];
         }
+        println!("ENDPOINTS {} {:?}", b, self.blossom_endpoints[b]);
 
         assert_eq!(self.blossom_labels[bb], 1);
         self.blossom_labels[b] = 1;
@@ -1109,10 +1113,12 @@ impl BlossomData {
         endpoints: &Vec<usize>,
         matching: &mut Vec<i64>,
     ) {
+        //println!("{:?}", self.blossom_endpoints[blossom_id]);
         // let t be the blossom which contains vertex
         // and which is a direct child of blossom_id
         let mut t = vertex;
         while self.blossom_parent[t] as usize != blossom_id {
+            //println!("{}", t);
             t = self.blossom_parent[t] as usize;
         }
         // if t is actually a non-trivial (non-vertex) blossom
@@ -1126,50 +1132,65 @@ impl BlossomData {
             .iter()
             .position(|c| *c == t)
             .unwrap();
+        println!("AUGMENT BLOSSOM {blossom_id} {vertex} {i}");
         let mut j = i;
         if i % 2 == 1 {
-            while j < self.blossom_children[blossom_id].len() {
+            //println!("{}", self.blossom_children[blossom_id].len());
+            while j != 0 {
                 j += 1;
+                println!("{}", j);
                 t = self.blossom_children[blossom_id][j];
                 let p = self.blossom_endpoints[blossom_id][j] as usize;
                 let p_parity = p ^ 1;
+                //println!("{} {} {}", j, p, i%2);
                 if t >= self.n_vertices {
+                    //println!("1142");
                     self.augment_blossom(t, endpoints[p], endpoints, matching);
                 }
 
                 j += 1;
+                j = j%self.blossom_children[blossom_id].len();
+                println!("{}", j);
+                //println!("{} {} {}", j, p, p_parity);
                 t = self.blossom_children[blossom_id][j];
                 if t >= self.n_vertices {
+                    //println!("1151");
+                    //println!("{:?}", endpoints);
                     self.augment_blossom(t, endpoints[p_parity], endpoints, matching);
                 }
-
+                println!("BLOSSOM MATCHING ASSIGNMENT {} {} {} {}", endpoints[p], p_parity, endpoints[p_parity], p);
                 matching[endpoints[p]] = p_parity as i64;
                 matching[endpoints[p_parity]] = p as i64;
             }
         } else {
-            while j > 0 {
+            let last_ix = self.blossom_children[blossom_id].len() - 1;
+            while j != 0 {
                 j -= 1;
+                println!("{}", j);
                 t = self.blossom_children[blossom_id][j];
                 let p = (self.blossom_endpoints[blossom_id][j - 1] ^ 1) as usize;
                 let p_parity = p ^ 1;
                 if t >= self.n_vertices {
+                    //println!("1166");
                     self.augment_blossom(t, endpoints[p], endpoints, matching);
                 }
 
-                j -= 1;
+                j = if j == 0 {last_ix} else {j - 1};
+                println!("{}", j);
                 t = self.blossom_children[blossom_id][j];
                 if t >= self.n_vertices {
+                    //println!("1173");
                     self.augment_blossom(t, endpoints[p_parity], endpoints, matching);
                 }
 
+                println!("BLOSSOM MATCHING ASSIGNMENT {} {} {} {}", endpoints[p], p_parity, endpoints[p_parity], p);
                 matching[endpoints[p]] = p_parity as i64;
                 matching[endpoints[p_parity]] = p as i64;
             }
         }
 
-        // better to use BTReeSets?
-        self.blossom_children[blossom_id].remove(i);
-        self.blossom_endpoints[blossom_id].remove(i);
+        self.blossom_children[blossom_id].rotate_left(i);
+        self.blossom_endpoints[blossom_id].rotate_left(i);
         self.blossom_root[blossom_id] = self.blossom_root[self.blossom_children[blossom_id][0]];
         assert_eq!(self.blossom_root[blossom_id] as usize, vertex);
     }
@@ -1183,10 +1204,10 @@ impl BlossomData {
     ) {
         let (v, w, _) = weighted_edges[edge_idx];
         let (mut s, mut p) = (v, 2 * edge_idx + 1);
-        println!("AUGMENT MATCHING {} {} {}", edge_idx, v, w);
+        //println!("AUGMENT MATCHING {} {} {}", edge_idx, v, w);
         loop {
             let bs = self.blossom_id[s];
-            println!("blossom_labels {:?}", self.blossom_labels.clone());
+            //println!("blossom_labels {:?}", self.blossom_labels.clone());
             assert_eq!(self.blossom_labels[bs], 1);
             assert_eq!(
                 self.label_endpoints[bs],
@@ -1195,6 +1216,7 @@ impl BlossomData {
             if bs >= self.n_vertices {
                 self.augment_blossom(bs, s, endpoints, matching);
             }
+            println!("A MATE {} ASSIGNED {}", s, p);
             matching[s] = p as i64;
 
             if self.label_endpoints[bs] == -1 {
@@ -1211,6 +1233,7 @@ impl BlossomData {
             if bt >= self.n_vertices {
                 self.augment_blossom(bt, j, endpoints, matching);
             }
+            println!("B MATE {} ASSIGNED {}", j, self.label_endpoints[bt]);
             matching[j] = self.label_endpoints[bt];
             p = (self.label_endpoints[bt] ^ 1) as usize;
         }
@@ -1227,6 +1250,7 @@ impl BlossomData {
                 self.augment_blossom(bs, s, endpoints, matching);
             }
             matching[s] = p as i64;
+            println!("C MATE {} ASSIGNED {}", s, p);
 
             if self.label_endpoints[bs] == -1 {
                 break;
@@ -1243,6 +1267,7 @@ impl BlossomData {
                 self.augment_blossom(bt, j, endpoints, matching);
             }
             matching[j] = self.label_endpoints[bt];
+            println!("D MATE {} ASSIGNED {}", j, self.label_endpoints[bt]);
             p = (self.label_endpoints[bt] ^ 1) as usize;
         }
     }

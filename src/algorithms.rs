@@ -87,7 +87,7 @@ fn contract_blossom<W, N: Neighborhood + FromIterator<usize> + Clone>(
     for (v, w) in matching.iter() {
         let v_in_blossom = blossom.iter().any(|u| *u == *v);
         let w_in_blossom = blossom.iter().any(|u| *u == *w);
-        //dbg!((v, w, v_in_blossom, w_in_blossom));
+        ////dbg!((v, w, v_in_blossom, w_in_blossom));
         if !v_in_blossom && w_in_blossom {
             new_matching.push((*v, blossom_root));
         } else if v_in_blossom && !w_in_blossom {
@@ -449,7 +449,7 @@ pub fn max_weight_matching(
 
         blossom_data.clear();
         let mut stack = Vec::with_capacity(n_vertices);
-        //dbg!(blossom_data.allowed_edge.clone());
+        ////dbg!(blossom_data.allowed_edge.clone());
 
         // prepare to root a search tree at every unmatched vertex
         // which is not contained in a contracted blossom
@@ -460,7 +460,7 @@ pub fn max_weight_matching(
                 blossom_data.assign_label(&mut stack, v, 1, -1, &endpoints, &matching);
             }
         }
-        //dbg!(blossom_data.allowed_edge.clone());
+        ////dbg!(blossom_data.allowed_edge.clone());
 
         let mut augmented = false;
         loop {
@@ -469,15 +469,15 @@ pub fn max_weight_matching(
                 println!("STACK {:?}", stack);
                 let v = stack.pop().unwrap();
                 println!("POP: {}", v);
-                //dbg!(blossom_data.blossom_labels.clone());
+                ////dbg!(blossom_data.blossom_labels.clone());
 
                 assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[v]], 1);
 
-                dbg!(neighborhood_endpoints[v].clone());
+                //dbg!(neighborhood_endpoints[v].clone());
                 for &p in neighborhood_endpoints[v].iter() {
                     let edge_idx = p / 2;
                     let w = endpoints[p];
-                    println!("p v w blossom_id[v] blossom_id[w] {} {} {} {} {}", p, v, w, blossom_data.blossom_id[v], blossom_data.blossom_id[w]);
+                    //println!("p v w blossom_id[v] blossom_id[w] {} {} {} {} {}", p, v, w, blossom_data.blossom_id[v], blossom_data.blossom_id[w]);
                     if blossom_data.blossom_id[v] == blossom_data.blossom_id[w] {
                         continue;
                     }
@@ -494,7 +494,7 @@ pub fn max_weight_matching(
 
                     let label = blossom_data.blossom_labels[blossom_data.blossom_id[w]];
                     println!("v w allowed_edge {} {} {}", v, w, blossom_data.allowed_edge[edge_idx]);
-                    //dbg!(label);
+                    ////dbg!(label);
                     if blossom_data.allowed_edge[edge_idx] {
                         if label == 0 {
                             blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &endpoints, &matching);
@@ -503,6 +503,8 @@ pub fn max_weight_matching(
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
                             match root {
                                 None => {
+                                    println!("MATCHING {:?}", matching);
+                                    println!("{}", edge_idx);
                                     blossom_data.augment_matching(
                                         edge_idx,
                                         weighted_edges,
@@ -510,6 +512,7 @@ pub fn max_weight_matching(
                                         &mut matching,
                                     );
                                     augmented = true;
+                                    println!("MATCHING {:?}", matching);
                                     break;
                                 }
                                 Some(r) => {
@@ -531,8 +534,8 @@ pub fn max_weight_matching(
                         }
                     } else if label == 1 {
                         let b = blossom_data.blossom_id[v];
-                        //dbg!(blossom_data.best_edge[b]);
-                        //dbg!((edge_slack, blossom_data.slack(blossom_data.best_edge[b] as usize, &edges, &weight_matrix)));
+                        ////dbg!(blossom_data.best_edge[b]);
+                        ////dbg!((edge_slack, blossom_data.slack(blossom_data.best_edge[b] as usize, &edges, &weight_matrix)));
                         if blossom_data.best_edge[b] < 0
                             || edge_slack
                                 < blossom_data.slack(
@@ -541,7 +544,7 @@ pub fn max_weight_matching(
                                 )
                         {
                             blossom_data.best_edge[b] = edge_idx as i64;
-                            //dbg!(b, blossom_data.best_edge[b]);
+                            ////dbg!(b, blossom_data.best_edge[b]);
                         }
                     } else if label == 0 {
                         if blossom_data.best_edge[w] < 0
