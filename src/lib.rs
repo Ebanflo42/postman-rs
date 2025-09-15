@@ -198,7 +198,7 @@ mod tests {
             (11, 12, 5.),
         ];
         let matching = max_weight_matching(&weighted_edges, false);
-        //assert_eq!(matching, vec![-1, 2, 1, 5, 9, 3, 7, 6, 10, 4, 8]);
+        assert_eq!(matching, vec![-1, 8, 3, 2, 6, 9, 4, 10, 1, 5, 7, 12, 11]);
         println!("{:?}", matching);
     }
 }
