@@ -100,7 +100,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "postman-rs"
+name = "postman"
 version = "0.0.1"
 dependencies = [
  "bitvec",

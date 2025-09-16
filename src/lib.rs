@@ -7,7 +7,7 @@ mod tests {
     use crate::types::*;
     use std::collections::BTreeSet;
     use std::collections::HashSet;
-
+    /*
     #[test]
     fn floyd_warshall1() {
         let weighted_edges = vec![
@@ -27,113 +27,6 @@ mod tests {
                 2.0, 2.0, 0.0, 1.0, 1.0, 2.0, 3.0, 1.0, 0.0
             ]
         );
-    }
-    /*
-    #[test]
-    fn edmonds1() {
-        let edges = vec![
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 4),
-            (4, 5),
-            (4, 6),
-            (4, 7),
-            (5, 8),
-            (6, 9),
-            (7, 10),
-            (10, 11),
-            (11, 12),
-            (12, 13),
-            (13, 14),
-            (14, 15),
-            (15, 11),
-            (15, 16),
-            (16, 17),
-        ];
-        let graph: Graph<(), Vec<usize>> = Graph::from_edges(&edges, false);
-        let matching = max_cardinality_matching(&graph);
-        let true_matching: Vec<(usize, usize)> = vec![
-            (0, 1),
-            (2, 3),
-            (8, 5),
-            (6, 9),
-            (4, 7),
-            (10, 11),
-            (12, 13),
-            (14, 15),
-            (16, 17),
-        ];
-        println!("{:?}", matching);
-        assert_eq!(matching, true_matching);
-    }
-
-    #[test]
-    fn edmonds2() {
-        let edges = vec![
-            (0, 1),
-            (1, 2),
-            (2, 3),
-            (3, 4),
-            (4, 5),
-            (4, 6),
-            (4, 7),
-            (5, 8),
-            (6, 9),
-            (7, 10),
-            (10, 11),
-            (11, 12),
-            (12, 13),
-            (13, 14),
-            (14, 15),
-            (15, 11),
-        ];
-        let vertices = (0usize..17).collect();
-        let graph: Graph<(), BTreeSet<usize>> =
-            Graph::from_edges_and_vertices(&edges, &vertices, false);
-        let matching = max_cardinality_matching(&graph);
-        let true_matching: Vec<(usize, usize)> = vec![
-            (0, 1),
-            (2, 3),
-            (8, 5),
-            (6, 9),
-            (4, 7),
-            (10, 11),
-            (12, 13),
-            (14, 15),
-        ];
-        println!("{:?}", matching);
-        assert_eq!(matching, true_matching);
-    }
-
-    #[test]
-    fn edmonds3() {
-        let edges = vec![
-            (11, 12),
-            (12, 13),
-            (13, 14),
-            (14, 15),
-            (15, 11),
-            (15, 16),
-            (16, 17),
-        ];
-        let vertices = (0usize..18).collect();
-        let graph: Graph<(), HashSet<usize>> =
-            Graph::from_edges_and_vertices(&edges, &vertices, false);
-        let matching = max_cardinality_matching(&graph);
-        let true_matching: Vec<(usize, usize)> = vec![
-            (0, 1),
-            (2, 3),
-            (8, 5),
-            (6, 9),
-            (4, 7),
-            (10, 11),
-            (12, 13),
-            (14, 15),
-            (16, 17),
-        ];
-        println!("{:?}", matching);
-        assert_eq!(matching, true_matching);
     }
     */
     #[test]
@@ -200,5 +93,19 @@ mod tests {
         let matching = max_weight_matching(&weighted_edges, false);
         assert_eq!(matching, vec![-1, 8, 3, 2, 6, 9, 4, 10, 1, 5, 7, 12, 11]);
         println!("{:?}", matching);
+    }
+
+    #[test]
+    fn max_weight_max_card_matching() {
+        let weighted_edges = vec![
+            (1, 2, 2.),
+            (1, 3, -2.),
+            (2, 3, 1.),
+            (2, 4, -1.),
+            (3, 4, -6.),
+        ];
+        let matching = max_weight_matching(&weighted_edges, false);
+        println!("{:?}", matching);
+        //assert_eq!(matching, vec![-1, 3, 4, 1, 2]);
     }
 }

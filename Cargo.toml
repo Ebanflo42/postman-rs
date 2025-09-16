@@ -1,5 +1,5 @@
 [package]
-name = "postman-rs"
+name = "postman"
 version = "0.0.1"
 authors = ["Eben Kadile <eben.kadile24@gmail.com>"]
 license = "AGPL-3"
