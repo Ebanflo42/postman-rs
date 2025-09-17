@@ -119,7 +119,6 @@ impl BlossomData {
         self.best_edge = vec![-1; 2 * self.n_vertices];
         self.blossom_best_edges = vec![Vec::new(); 2 * self.n_vertices];
         self.allowed_edge = vec![false; self.n_edges];
-        self.update_mode = UpdateMode::Undetermined;
     }
 
     pub fn slack(&self, edge_idx: usize, weighted_edges: &Vec<(usize, usize, f64)>) -> f64 {
@@ -216,8 +215,12 @@ impl BlossomData {
 
         if self.update_mode == UpdateMode::Undetermined {
             //assert!(max_cardinality);
-            // no more updates necessary
+            // if we reach this point without determining an update mode
+            // no more updates are necessary
+            // in that case, mark the update mode as Vertex to terminate the loop after
+            // one more update to the blossom structure
             self.update_mode = UpdateMode::Vertex;
+            delta = self.compute_delta_vertices();
             delta = if delta < 0.0 { 0.0 } else { delta };
         }
 
@@ -234,9 +237,15 @@ impl BlossomData {
         matching: &Vec<i64>,
     ) -> bool {
         match self.update_mode {
-            UpdateMode::Undetermined => (),
-            UpdateMode::Vertex => return true,
+            UpdateMode::Undetermined => {
+                self.update_mode = UpdateMode::Undetermined;
+            }
+            UpdateMode::Vertex => {
+                self.update_mode = UpdateMode::Undetermined;
+                return true;
+            }
             UpdateMode::SVertexFreeVertex => {
+                self.update_mode = UpdateMode::Undetermined;
                 self.allowed_edge[best_edge] = true;
                 let (mut i, mut j, _) = weighted_edges[best_edge];
                 if self.blossom_labels[self.blossom_id[i]] == 0 {
@@ -246,12 +255,14 @@ impl BlossomData {
                 stack.push(i);
             }
             UpdateMode::SBlossom => {
+                self.update_mode = UpdateMode::Undetermined;
                 self.allowed_edge[best_edge] = true;
                 let (i, j, _) = weighted_edges[best_edge];
                 //assert_eq!(self.blossom_labels[self.blossom_id[i]], 1);
                 stack.push(i);
             }
             UpdateMode::TBlossom => {
+                self.update_mode = UpdateMode::Undetermined;
                 self.expand_blossom(stack, update_blossom, false, endpoints, matching);
             }
         }
@@ -442,13 +453,7 @@ impl BlossomData {
             self.blossom_parent[bv] = b as i64;
             self.blossom_children[b].push(bv);
             self.blossom_endpoints[b].push(self.label_endpoints[bv]);
-            //println!("BLOSSOM ENDPOINT {} PUSH {} {}", b, self.label_endpoints[bv], bv);
-            //assert!(
-            //    self.blossom_labels[bv] == 2
-            //        || (self.blossom_labels[bv] == 1
-            //            && self.label_endpoints[bv] == matching[self.blossom_root[bv] as usize])
-            //);
-            //assert!(self.label_endpoints[bv] >= 0);
+
             v = endpoints[self.label_endpoints[bv] as usize];
             bv = self.blossom_id[v];
         }
@@ -463,19 +468,11 @@ impl BlossomData {
             self.blossom_parent[bw] = b as i64;
             self.blossom_children[b].push(bw);
             self.blossom_endpoints[b].push(self.label_endpoints[bw] ^ 1);
-            //println!("BLOSSOM ENDPOINT {} PUSH {} {}", b, self.label_endpoints[bw] ^ 1, bw);
-            //assert!(
-            //    self.blossom_labels[bw] == 2
-            //        || (self.blossom_labels[bw] == 1
-            //            && self.label_endpoints[bw] == matching[self.blossom_root[bw] as usize])
-            //);
-            //assert!(self.label_endpoints[bw] >= 0);
+
             w = endpoints[self.label_endpoints[bw] as usize];
             bw = self.blossom_id[w];
         }
-        //println!("ENDPOINTS {} {:?}", b, self.blossom_endpoints[b]);
 
-        //assert_eq!(self.blossom_labels[bb], 1);
         self.blossom_labels[b] = 1;
         self.label_endpoints[b] = self.label_endpoints[bb];
         self.dual_soln[b] = 0.0;
@@ -595,7 +592,6 @@ impl BlossomData {
                 while k < self.blossom_children[blossom_id].len() {
                     let ix = (endpoint ^ 1) as usize;
                     self.blossom_labels[endpoints[ix]] = 0;
-                    println!("4 {} SET {}", endpoints[ix], 0);
                     self.blossom_labels
                         [endpoints[(self.blossom_endpoints[blossom_id][k] ^ 1) as usize]] = 0;
                     self.assign_label(stack, endpoints[ix], 2, endpoint, endpoints, matching);

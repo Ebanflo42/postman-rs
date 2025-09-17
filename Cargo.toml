@@ -10,3 +10,4 @@ edition = "2021"
 [dependencies]
 bitvec = "1.0.1"
 num = "0.4.3"
+ndarray = "0.16.0"

@@ -104,8 +104,8 @@ mod tests {
             (2, 4, -1.),
             (3, 4, -6.),
         ];
-        let matching = max_weight_matching(&weighted_edges, false);
+        let matching = max_weight_matching(&weighted_edges, true);
         println!("{:?}", matching);
-        //assert_eq!(matching, vec![-1, 3, 4, 1, 2]);
+        assert_eq!(matching, vec![-1, 3, 4, 1, 2]);
     }
 }
