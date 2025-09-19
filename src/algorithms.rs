@@ -1,9 +1,9 @@
-use std::path;
+use std::collections::BTreeSet;
 
-use num::{Bounded, Zero, One};
 use ndarray::Array2;
+use num::{Bounded, One, Zero};
 
-use crate::types::{BlossomData};
+use crate::types::BlossomData;
 
 //*
 pub fn floyd_warshall<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
@@ -13,10 +13,10 @@ pub fn floyd_warshall<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
         if n_vertices < edge.0 {
-            n_vertices = edge.0;
+            n_vertices = edge.0 + 1;
         }
         if n_vertices < edge.1 {
-            n_vertices = edge.1;
+            n_vertices = edge.1 + 1;
         }
     }
 
@@ -53,7 +53,45 @@ pub fn floyd_warshall<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
 
     (distances, pathtracker)
 }
-//*/
+
+fn floyd_warshall2<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
+    weighted_edges: &Vec<(usize, usize, W)>,
+    n_vertices: usize,
+    directed: bool,
+) -> (Array2<W>, Array2<i64>) {
+    let mut distances = Array2::from_shape_fn((n_vertices, n_vertices), |_| W::max_value());
+    let mut pathtracker = Array2::from_shape_fn((n_vertices, n_vertices), |_| -1);
+    for &edge in weighted_edges.iter() {
+        distances[[edge.0, edge.1]] = edge.2;
+        pathtracker[[edge.0, edge.1]] = edge.0 as i64;
+        if !directed {
+            distances[[edge.1, edge.0]] = edge.2;
+            pathtracker[[edge.1, edge.0]] = edge.0 as i64;
+        }
+    }
+    for j in 0..n_vertices {
+        distances[[j, j]] = W::zero();
+        pathtracker[[j, j]] = j as i64;
+    }
+
+    for j in 0..n_vertices {
+        for i in 0..n_vertices {
+            if i != j {
+                for k in 0..n_vertices {
+                    if k != j {
+                        let sum = distances[[i, j]] + distances[[j, k]];
+                        if distances[[i, k]] > sum {
+                            distances[[i, k]] = sum;
+                            pathtracker[[i, k]] = pathtracker[[j, k]];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (distances, pathtracker)
+}
 
 pub fn max_weight_matching(
     weighted_edges: &Vec<(usize, usize, f64)>,
@@ -93,7 +131,6 @@ pub fn max_weight_matching(
     let mut matching = vec![-1i64; n_vertices];
 
     for _stage in 0..n_vertices {
-
         blossom_data.clear();
         let mut stack = Vec::with_capacity(n_vertices);
 
@@ -136,7 +173,14 @@ pub fn max_weight_matching(
                     let label = blossom_data.blossom_labels[blossom_data.blossom_id[w]];
                     if blossom_data.allowed_edge[edge_idx] {
                         if label == 0 {
-                            blossom_data.assign_label(&mut stack, w, 2, (p ^ 1) as i64, &endpoints, &matching);
+                            blossom_data.assign_label(
+                                &mut stack,
+                                w,
+                                2,
+                                (p ^ 1) as i64,
+                                &endpoints,
+                                &matching,
+                            );
                         } else if label == 1 {
                             let root = blossom_data
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
@@ -172,20 +216,16 @@ pub fn max_weight_matching(
                         let b = blossom_data.blossom_id[v];
                         if blossom_data.best_edge[b] < 0
                             || edge_slack
-                                < blossom_data.slack(
-                                    blossom_data.best_edge[b] as usize,
-                                    weighted_edges
-                                )
+                                < blossom_data
+                                    .slack(blossom_data.best_edge[b] as usize, weighted_edges)
                         {
                             blossom_data.best_edge[b] = edge_idx as i64;
                         }
                     } else if label == 0 {
                         if blossom_data.best_edge[w] < 0
                             || edge_slack
-                                < blossom_data.slack(
-                                    blossom_data.best_edge[w] as usize,
-                                    weighted_edges
-                                )
+                                < blossom_data
+                                    .slack(blossom_data.best_edge[w] as usize, weighted_edges)
                         {
                             blossom_data.best_edge[w] = edge_idx as i64;
                         }
@@ -196,10 +236,8 @@ pub fn max_weight_matching(
                 break;
             }
 
-            let (delta, best_edge, update_blossom) = blossom_data.determine_delta_and_update_mode(
-                weighted_edges,
-                max_cardinality,
-            );
+            let (delta, best_edge, update_blossom) =
+                blossom_data.determine_delta_and_update_mode(weighted_edges, max_cardinality);
             blossom_data.update_dual_soln(delta);
             let must_break = blossom_data.update_blossom_structure(
                 &mut stack,
@@ -238,9 +276,174 @@ pub fn max_weight_matching(
     matching
 }
 
-pub fn min_weight_max_cardinality_matching(
-    weighted_edges: &Vec<(usize, usize, f64)>,
-) -> Vec<i64> {
+pub fn min_weight_max_cardinality_matching(weighted_edges: &Vec<(usize, usize, f64)>) -> Vec<i64> {
     let weighted_edges = weighted_edges.iter().map(|&(i, j, w)| (i, j, -w)).collect();
     max_weight_matching(&weighted_edges, true)
+}
+
+pub fn min_weight_t_join(
+    weighted_edges: &Vec<(usize, usize, f64)>,
+    t: &Vec<usize>,
+) -> BTreeSet<(usize, usize)> {
+    if t.len() % 2 != 0 {
+        panic!("Vertex set `t` must have even cardinality!");
+    }
+
+    let mut n_vertices = 0;
+    for &edge in weighted_edges.iter() {
+        if n_vertices < edge.0 {
+            n_vertices = edge.0;
+        }
+        if n_vertices < edge.1 {
+            n_vertices = edge.1;
+        }
+    }
+
+    let (distances, pathtracker) = floyd_warshall(weighted_edges, false);
+    let construct_path = |i: usize, j: usize| {
+        let mut result = vec![(pathtracker[[i, j]] as usize, j)];
+        while result.last().unwrap().0 != i {
+            let next_step = pathtracker[[i, result.last().unwrap().0]];
+            if next_step < 0 {
+                panic!("{} and {} are disconnected!", i, j);
+            }
+            result.push((next_step as usize, result.last().unwrap().0));
+        }
+        result
+    };
+
+    let mut indices = Vec::from_iter(0..t.len());
+    indices.sort_by_key(|&i| t[i]);
+    let mut metric_closure_edges = Vec::new();
+    for i in 0..t.len() {
+        for j in 0..i {
+            metric_closure_edges.push((i, j, distances[[t[i], t[j]]]));
+        }
+    }
+
+    let metric_closure_matching = min_weight_max_cardinality_matching(&metric_closure_edges);
+    let mut covered_indices = BTreeSet::new();
+    let mut result_edges = BTreeSet::new();
+    for (i, &j) in metric_closure_matching.iter().enumerate() {
+        if j < 0 {
+            panic!("Did not find a perfect matching on the metric closure of `t`");
+        }
+        if covered_indices.contains(&i) || covered_indices.contains(&(j as usize)) {
+            continue;
+        }
+        let path: BTreeSet<(usize, usize)> = BTreeSet::from_iter(
+            construct_path(i, j as usize)
+                .iter()
+                .map(|&(i, j)| (t[i], t[j])),
+        );
+        result_edges = result_edges
+            .symmetric_difference(&path)
+            .map(|x| *x)
+            .collect();
+        covered_indices.insert(i);
+        covered_indices.insert(j as usize);
+    }
+
+    result_edges
+}
+
+pub fn eulerian_tour(edges: &Vec<(usize, usize)>) -> Vec<usize> {
+    let mut n_vertices = 0;
+    for &edge in edges.iter() {
+        if n_vertices < edge.0 {
+            n_vertices = edge.0 + 1;
+        }
+        if n_vertices < edge.1 {
+            n_vertices = edge.1 + 1;
+        }
+    }
+
+    let mut neighborhoods: Vec<Vec<usize>> = vec![Vec::new(); n_vertices];
+    for (i, &edge) in edges.iter().enumerate() {
+        neighborhoods[edge.0].push(i);
+        neighborhoods[edge.1].push(i);
+    }
+
+    let mut result = Vec::new();
+    let mut stack = Vec::with_capacity(n_vertices);
+    stack.push(edges[0].0);
+    while stack.len() > 0 {
+        let v = *stack.last().unwrap();
+        if neighborhoods[v].len() == 0 {
+            result.push(stack.pop().unwrap());
+        } else {
+            let edge_idx = neighborhoods[v].pop().unwrap();
+            let edge = edges[edge_idx];
+            let w = if edge.0 == v { edge.1 } else { edge.0 };
+            let ew = neighborhoods[w]
+                .iter()
+                .position(|i| *i == edge_idx)
+                .unwrap();
+            neighborhoods[w].swap_remove(ew);
+            stack.push(w);
+        }
+    }
+
+    result
+}
+
+fn eulerian_tour2<W: Copy>(
+    edges: &Vec<(usize, usize, W)>,
+    n_vertices: usize,
+    neighborhoods: &Vec<Vec<usize>>,
+) -> Vec<usize> {
+    let mut neighborhoods = neighborhoods.clone();
+    let mut result = Vec::new();
+    let mut stack = Vec::with_capacity(n_vertices);
+    stack.push(edges[0].0);
+    while stack.len() > 0 {
+        let v = *stack.last().unwrap();
+        if neighborhoods[v].len() == 0 {
+            result.push(stack.pop().unwrap());
+        } else {
+            let edge_idx = neighborhoods[v].pop().unwrap();
+            let edge = edges[edge_idx];
+            let w = if edge.0 == v { edge.1 } else { edge.0 };
+            let ew = neighborhoods[w]
+                .iter()
+                .position(|i| *i == edge_idx)
+                .unwrap();
+            neighborhoods[w].swap_remove(ew);
+            stack.push(w);
+        }
+    }
+
+    result
+}
+
+pub fn postman(weighted_edges: &Vec<(usize, usize, f64)>) -> Vec<usize> {
+    let mut n_vertices = 0;
+    for &edge in weighted_edges.iter() {
+        if n_vertices < edge.0 {
+            n_vertices = edge.0 + 1;
+        }
+        if n_vertices < edge.1 {
+            n_vertices = edge.1 + 1;
+        }
+    }
+
+    let mut neighborhoods: Vec<Vec<usize>> = vec![Vec::new(); n_vertices];
+    for (i, &edge) in weighted_edges.iter().enumerate() {
+        neighborhoods[edge.0].push(i);
+        neighborhoods[edge.1].push(i);
+    }
+    let odd_verts: Vec<usize> = (0..n_vertices)
+        .filter(|&v| neighborhoods[v].len() % 2 == 1)
+        .collect();
+
+    if odd_verts.len() == 0 {
+        eulerian_tour2(&weighted_edges, n_vertices, &neighborhoods)
+    } else {
+        let t_join = min_weight_t_join(weighted_edges, &odd_verts);
+        let new_edges = weighted_edges
+            .iter()
+            .map(|e| (e.0, e.1, ()))
+            .chain(t_join.iter().map(|e| (e.0, e.1, ())));
+        eulerian_tour2(&new_edges.collect(), n_vertices, &neighborhoods)
+    }
 }
