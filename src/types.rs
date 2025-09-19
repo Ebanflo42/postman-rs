@@ -1,6 +1,4 @@
-use num::Bounded;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::fmt::Display;
+use num::{Bounded, Num, NumCast};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 enum UpdateMode {
@@ -11,7 +9,7 @@ enum UpdateMode {
     TBlossom,
 }
 
-pub struct BlossomData {
+pub struct BlossomData<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>> {
     n_vertices: usize,
     n_edges: usize,
 
@@ -63,7 +61,7 @@ pub struct BlossomData {
 
     // dual solution to the current matching
     // the matching is optimal when the slack is zero
-    dual_soln: Vec<f64>,
+    dual_soln: Vec<W>,
 
     // allowed_edge[e] = true means that edge e
     // has zero slack, allowed_edge[e] = false
@@ -74,8 +72,8 @@ pub struct BlossomData {
     update_mode: UpdateMode,
 }
 
-impl BlossomData {
-    pub fn new(n_vertices: usize, n_edges: usize, max_weight: f64) -> Self {
+impl<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>> BlossomData<W> {
+    pub fn new(n_vertices: usize, n_edges: usize, max_weight: W) -> Self {
         let blossom_labels = vec![0i8; 2 * n_vertices];
         let label_endpoints = vec![-1i64; 2 * n_vertices];
         let blossom_endpoints = vec![Vec::new(); 2 * n_vertices];
@@ -91,7 +89,7 @@ impl BlossomData {
         let unused_blossoms = Vec::from_iter(n_vertices..2 * n_vertices);
         let mut dual_soln = vec![max_weight; n_vertices];
         for _ in 0..n_vertices {
-            dual_soln.push(0.0);
+            dual_soln.push(W::zero());
         }
         let allowed_edge: Vec<bool> = vec![false; n_edges];
         let update_mode = UpdateMode::Undetermined;
@@ -121,13 +119,13 @@ impl BlossomData {
         self.allowed_edge = vec![false; self.n_edges];
     }
 
-    pub fn slack(&self, edge_idx: usize, weighted_edges: &Vec<(usize, usize, f64)>) -> f64 {
+    pub fn slack(&self, edge_idx: usize, weighted_edges: &Vec<(usize, usize, W)>) -> W {
         let (i, j, w) = weighted_edges[edge_idx];
-        self.dual_soln[i] + self.dual_soln[j] - 2.0 * w
+        self.dual_soln[i] + self.dual_soln[j] - W::from(2).unwrap() * w
     }
 
-    fn compute_delta_vertices(&self) -> f64 {
-        let mut d = f64::max_value();
+    fn compute_delta_vertices(&self) -> W {
+        let mut d = W::max_value();
         for i in 0..self.n_vertices {
             if self.dual_soln[i] < d {
                 d = self.dual_soln[i];
@@ -138,9 +136,9 @@ impl BlossomData {
 
     fn compute_delta_s_vertex_free_vertex(
         &mut self,
-        delta: f64,
-        weighted_edges: &Vec<(usize, usize, f64)>,
-    ) -> (f64, usize) {
+        delta: W,
+        weighted_edges: &Vec<(usize, usize, W)>,
+    ) -> (W, usize) {
         let mut d = delta;
         let mut ix = 0usize;
         for v in 0..self.n_vertices {
@@ -158,10 +156,10 @@ impl BlossomData {
 
     fn compute_delta_s_blossoms(
         &mut self,
-        delta: f64,
+        delta: W,
         best_edge_idx: usize,
-        weighted_edges: &Vec<(usize, usize, f64)>,
-    ) -> (f64, usize) {
+        weighted_edges: &Vec<(usize, usize, W)>,
+    ) -> (W, usize) {
         let mut d = delta;
         let mut ix = best_edge_idx;
         for b in 0..2 * self.n_vertices {
@@ -170,7 +168,7 @@ impl BlossomData {
                 && self.best_edge[b] != -1
             {
                 let edge_idx = self.best_edge[b] as usize;
-                let best_slack = 0.5 * self.slack(edge_idx, weighted_edges);
+                let best_slack = self.slack(edge_idx, weighted_edges)/W::from(2).unwrap();
                 if best_slack < d || self.update_mode == UpdateMode::Undetermined {
                     d = best_slack;
                     ix = edge_idx;
@@ -181,7 +179,7 @@ impl BlossomData {
         (d, ix)
     }
 
-    fn compute_delta_t_blossoms(&mut self, delta: f64) -> (usize, f64) {
+    fn compute_delta_t_blossoms(&mut self, delta: W) -> (usize, W) {
         let mut d = delta;
         let mut blossom = 0;
         for b in self.n_vertices..2 * self.n_vertices {
@@ -201,10 +199,10 @@ impl BlossomData {
 
     pub fn determine_delta_and_update_mode(
         &mut self,
-        weighted_edges: &Vec<(usize, usize, f64)>,
+        weighted_edges: &Vec<(usize, usize, W)>,
         max_cardinality: bool,
-    ) -> (f64, usize, usize) {
-        let mut delta = <f64 as Bounded>::min_value();
+    ) -> (W, usize, usize) {
+        let mut delta = <W as Bounded>::min_value();
         if !max_cardinality {
             delta = self.compute_delta_vertices();
             self.update_mode = UpdateMode::Vertex;
@@ -221,7 +219,7 @@ impl BlossomData {
             // one more update to the blossom structure
             self.update_mode = UpdateMode::Vertex;
             delta = self.compute_delta_vertices();
-            delta = if delta < 0.0 { 0.0 } else { delta };
+            delta = if delta < W::zero() { W::zero() } else { delta };
         }
 
         (delta, best_edge, update_blossom)
@@ -232,7 +230,7 @@ impl BlossomData {
         stack: &mut Vec<usize>,
         best_edge: usize,
         update_blossom: usize,
-        weighted_edges: &Vec<(usize, usize, f64)>,
+        weighted_edges: &Vec<(usize, usize, W)>,
         endpoints: &Vec<usize>,
         matching: &Vec<i64>,
     ) -> bool {
@@ -269,7 +267,7 @@ impl BlossomData {
         false
     }
 
-    pub fn update_dual_soln(&mut self, delta: f64) {
+    pub fn update_dual_soln(&mut self, delta: W) {
         // the dual solution starts by satisfying the constraints
         // 1) For every i, j: dual_soln[i], dual_soln[j], slack(i, j) >= 0
         // 2) (i, j) is matched => slack(i, j) = 0
@@ -282,17 +280,17 @@ impl BlossomData {
         for v in 0..self.n_vertices {
             let label = self.blossom_labels[self.blossom_id[v]];
             if label == 1 {
-                self.dual_soln[v] -= delta;
+                self.dual_soln[v] = self.dual_soln[v] - delta;
             } else if label == 2 {
-                self.dual_soln[v] += delta;
+                self.dual_soln[v] = self.dual_soln[v] + delta;
             }
         }
         for b in self.n_vertices..2 * self.n_vertices {
             if self.blossom_root[b] >= 0 && self.blossom_parent[b] == -1 {
                 if self.blossom_labels[b] == 1 {
-                    self.dual_soln[b] += delta;
+                    self.dual_soln[b] = self.dual_soln[b] + delta;
                 } else if self.blossom_labels[b] == 2 {
-                    self.dual_soln[b] -= delta;
+                    self.dual_soln[b] = self.dual_soln[b] - delta;
                 }
             }
         }
@@ -302,7 +300,7 @@ impl BlossomData {
         self.blossom_parent[blossom_id] == -1
             && self.blossom_root[blossom_id] >= 0
             && self.blossom_labels[blossom_id] == 1
-            && self.dual_soln[blossom_id] < 1e-12
+            && W::into(self.dual_soln[blossom_id]) < 1e-12f64
     }
 
     pub fn collect_leaves(&self, current_blossom: usize, deep: bool) -> Vec<usize> {
@@ -430,7 +428,7 @@ impl BlossomData {
         matching: &Vec<i64>,
         endpoints: &Vec<usize>,
         nbrhd_endpoints: &Vec<Vec<usize>>,
-        weighted_edges: &Vec<(usize, usize, f64)>,
+        weighted_edges: &Vec<(usize, usize, W)>,
     ) {
         let (mut v, mut w, _) = weighted_edges[edge_idx];
         let bb = self.blossom_id[root];
@@ -475,7 +473,7 @@ impl BlossomData {
 
         self.blossom_labels[b] = 1;
         self.label_endpoints[b] = self.label_endpoints[bb];
-        self.dual_soln[b] = 0.0;
+        self.dual_soln[b] = W::zero();
         let leaves: Vec<usize> = self.collect_leaves(b, false);
         let mut two_leaves = Vec::with_capacity(leaves.len());
         for &leaf in leaves.iter() {
@@ -564,7 +562,7 @@ impl BlossomData {
             self.blossom_parent[c] = -1;
             if c < self.n_vertices {
                 self.blossom_id[c] = c
-            } else if endstage && self.dual_soln[c] < 1e-12 {
+            } else if endstage && W::into(self.dual_soln[c]) < 1e-12f64 {
                 self.expand_blossom(stack, c, endstage, endpoints, matching);
             } else {
                 let leaves: Vec<usize> = self.collect_leaves(c, false);
@@ -794,7 +792,7 @@ impl BlossomData {
     pub fn augment_matching(
         &mut self,
         edge_idx: usize,
-        weighted_edges: &Vec<(usize, usize, f64)>,
+        weighted_edges: &Vec<(usize, usize, W)>,
         endpoints: &Vec<usize>,
         matching: &mut Vec<i64>,
     ) {

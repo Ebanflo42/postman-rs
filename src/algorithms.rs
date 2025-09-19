@@ -1,33 +1,35 @@
 use std::collections::BTreeSet;
 
 use ndarray::Array2;
-use num::{Bounded, One, Zero};
+use num::{Bounded, Num, NumCast, One, Zero};
 
 use crate::types::BlossomData;
 
 //*
-pub fn floyd_warshall<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
+pub fn floyd_warshall<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast>(
     weighted_edges: &Vec<(usize, usize, W)>,
     directed: bool,
 ) -> (Array2<W>, Array2<i64>) {
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
-        if n_vertices < edge.0 {
+        if n_vertices <= edge.0 {
             n_vertices = edge.0 + 1;
         }
-        if n_vertices < edge.1 {
+        if n_vertices <= edge.1 {
             n_vertices = edge.1 + 1;
         }
     }
 
-    let mut distances = Array2::from_shape_fn((n_vertices, n_vertices), |_| W::max_value());
+    let mut distances = Array2::from_shape_fn((n_vertices, n_vertices), |_| {
+        W::max_value() / W::from(2).unwrap()
+    });
     let mut pathtracker = Array2::from_shape_fn((n_vertices, n_vertices), |_| -1);
     for &edge in weighted_edges.iter() {
         distances[[edge.0, edge.1]] = edge.2;
         pathtracker[[edge.0, edge.1]] = edge.0 as i64;
         if !directed {
             distances[[edge.1, edge.0]] = edge.2;
-            pathtracker[[edge.1, edge.0]] = edge.0 as i64;
+            pathtracker[[edge.1, edge.0]] = edge.1 as i64;
         }
     }
     for j in 0..n_vertices {
@@ -35,15 +37,15 @@ pub fn floyd_warshall<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
         pathtracker[[j, j]] = j as i64;
     }
 
-    for j in 0..n_vertices {
+    for k in 0..n_vertices {
         for i in 0..n_vertices {
-            if i != j {
-                for k in 0..n_vertices {
-                    if k != j {
-                        let sum = distances[[i, j]] + distances[[j, k]];
-                        if distances[[i, k]] > sum {
-                            distances[[i, k]] = sum;
-                            pathtracker[[i, k]] = pathtracker[[j, k]];
+            if i != k {
+                for j in 0..n_vertices {
+                    if j != i && j != k {
+                        let sum = distances[[i, k]] + distances[[k, j]];
+                        if distances[[i, j]] > sum {
+                            distances[[i, j]] = sum;
+                            pathtracker[[i, j]] = pathtracker[[k, j]];
                         }
                     }
                 }
@@ -54,19 +56,21 @@ pub fn floyd_warshall<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
     (distances, pathtracker)
 }
 
-fn floyd_warshall2<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
+fn floyd_warshall2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast>(
     weighted_edges: &Vec<(usize, usize, W)>,
     n_vertices: usize,
     directed: bool,
 ) -> (Array2<W>, Array2<i64>) {
-    let mut distances = Array2::from_shape_fn((n_vertices, n_vertices), |_| W::max_value());
+    let mut distances = Array2::from_shape_fn((n_vertices, n_vertices), |_| {
+        W::max_value() / W::from(2).unwrap()
+    });
     let mut pathtracker = Array2::from_shape_fn((n_vertices, n_vertices), |_| -1);
     for &edge in weighted_edges.iter() {
         distances[[edge.0, edge.1]] = edge.2;
         pathtracker[[edge.0, edge.1]] = edge.0 as i64;
         if !directed {
             distances[[edge.1, edge.0]] = edge.2;
-            pathtracker[[edge.1, edge.0]] = edge.0 as i64;
+            pathtracker[[edge.1, edge.0]] = edge.1 as i64;
         }
     }
     for j in 0..n_vertices {
@@ -74,15 +78,15 @@ fn floyd_warshall2<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
         pathtracker[[j, j]] = j as i64;
     }
 
-    for j in 0..n_vertices {
+    for k in 0..n_vertices {
         for i in 0..n_vertices {
-            if i != j {
-                for k in 0..n_vertices {
-                    if k != j {
-                        let sum = distances[[i, j]] + distances[[j, k]];
-                        if distances[[i, k]] > sum {
-                            distances[[i, k]] = sum;
-                            pathtracker[[i, k]] = pathtracker[[j, k]];
+            if i != k {
+                for j in 0..n_vertices {
+                    if j != i && j != k {
+                        let sum = distances[[i, k]] + distances[[k, j]];
+                        if distances[[i, j]] > sum {
+                            distances[[i, j]] = sum;
+                            pathtracker[[i, j]] = pathtracker[[k, j]];
                         }
                     }
                 }
@@ -93,16 +97,16 @@ fn floyd_warshall2<W: Zero + One + Bounded + PartialOrd + Copy + Sized>(
     (distances, pathtracker)
 }
 
-pub fn max_weight_matching(
-    weighted_edges: &Vec<(usize, usize, f64)>,
+pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
+    weighted_edges: &Vec<(usize, usize, W)>,
     max_cardinality: bool,
 ) -> Vec<i64> {
     // not modified during algorithm iteration
     let mut n_vertices = 0;
-    let mut max_weight = f64::min_value();
+    let mut max_weight = W::min_value();
     for &edge in weighted_edges.iter() {
         if edge.0 == edge.1 {
-            panic!("Invalid edge {:?}", edge);
+            panic!("Invalid edge {:?}", (edge.0, edge.1));
         }
         if edge.0 >= n_vertices {
             n_vertices = edge.0 + 1;
@@ -114,7 +118,7 @@ pub fn max_weight_matching(
             max_weight = edge.2;
         }
     }
-    max_weight = f64::max(0.0, max_weight);
+    max_weight = if max_weight < W::zero() {W::zero()} else {max_weight};
     let mut neighborhood_endpoints = vec![Vec::new(); n_vertices];
     for (i, edge) in weighted_edges.iter().enumerate() {
         neighborhood_endpoints[edge.0].push(2 * i + 1);
@@ -162,10 +166,10 @@ pub fn max_weight_matching(
                         continue;
                     }
 
-                    let mut edge_slack = 0.0;
+                    let mut edge_slack = W::zero();
                     if !blossom_data.allowed_edge[edge_idx] {
                         edge_slack = blossom_data.slack(edge_idx, weighted_edges);
-                        if edge_slack <= 1e-12 {
+                        if edge_slack.into() <= 1e-12f64 {
                             blossom_data.allowed_edge[edge_idx] = true;
                         }
                     }
@@ -276,13 +280,13 @@ pub fn max_weight_matching(
     matching
 }
 
-pub fn min_weight_max_cardinality_matching(weighted_edges: &Vec<(usize, usize, f64)>) -> Vec<i64> {
-    let weighted_edges = weighted_edges.iter().map(|&(i, j, w)| (i, j, -w)).collect();
+pub fn min_weight_max_cardinality_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(weighted_edges: &Vec<(usize, usize, W)>) -> Vec<i64> {
+    let weighted_edges = weighted_edges.iter().map(|&(i, j, w)| (i, j, W::from(-1).unwrap()*w)).collect();
     max_weight_matching(&weighted_edges, true)
 }
 
-pub fn min_weight_t_join(
-    weighted_edges: &Vec<(usize, usize, f64)>,
+pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
+    weighted_edges: &Vec<(usize, usize, W)>,
     t: &Vec<usize>,
 ) -> BTreeSet<(usize, usize)> {
     if t.len() % 2 != 0 {
@@ -291,15 +295,15 @@ pub fn min_weight_t_join(
 
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
-        if n_vertices < edge.0 {
+        if n_vertices <= edge.0 {
             n_vertices = edge.0;
         }
-        if n_vertices < edge.1 {
+        if n_vertices <= edge.1 {
             n_vertices = edge.1;
         }
     }
 
-    let (distances, pathtracker) = floyd_warshall(weighted_edges, false);
+    let (distances, pathtracker) = floyd_warshall2(weighted_edges, n_vertices, false);
     let construct_path = |i: usize, j: usize| {
         let mut result = vec![(pathtracker[[i, j]] as usize, j)];
         while result.last().unwrap().0 != i {
@@ -350,10 +354,10 @@ pub fn min_weight_t_join(
 pub fn eulerian_tour(edges: &Vec<(usize, usize)>) -> Vec<usize> {
     let mut n_vertices = 0;
     for &edge in edges.iter() {
-        if n_vertices < edge.0 {
+        if n_vertices <= edge.0 {
             n_vertices = edge.0 + 1;
         }
-        if n_vertices < edge.1 {
+        if n_vertices <= edge.1 {
             n_vertices = edge.1 + 1;
         }
     }
@@ -419,10 +423,10 @@ fn eulerian_tour2<W: Copy>(
 pub fn postman(weighted_edges: &Vec<(usize, usize, f64)>) -> Vec<usize> {
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
-        if n_vertices < edge.0 {
+        if n_vertices <= edge.0 {
             n_vertices = edge.0 + 1;
         }
-        if n_vertices < edge.1 {
+        if n_vertices <= edge.1 {
             n_vertices = edge.1 + 1;
         }
     }

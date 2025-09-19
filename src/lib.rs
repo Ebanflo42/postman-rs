@@ -4,31 +4,32 @@ pub mod types;
 #[cfg(test)]
 mod tests {
     use crate::algorithms::*;
-    use crate::types::*;
-    use std::collections::BTreeSet;
-    use std::collections::HashSet;
-    /*
+    use ndarray::array;
+    //*
     #[test]
     fn floyd_warshall1() {
         let weighted_edges = vec![
-            (0, 1, 1.0),
-            (1, 2, 1.0),
-            (2, 3, 2.0),
-            (3, 4, 1.0),
-            (4, 0, 1.0),
-            (0, 3, 1.0),
+            (0, 1, 1),
+            (1, 2, 1),
+            (2, 3, 2),
+            (3, 4, 1),
+            (4, 0, 1),
+            (0, 3, 1),
         ];
-        let distance_matrix = floyd_warshall(&weighted_edges, false);
-        println!("{}", distance_matrix.to_string());
+        let (distance_matrix, path_matrix) = floyd_warshall(&weighted_edges, false);
+        println!("{}", path_matrix.to_string());
         assert_eq!(
-            distance_matrix.data,
-            vec![
-                0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, 2.0, 2.0, 2.0, 1.0, 0.0, 2.0, 3.0, 1.0,
-                2.0, 2.0, 0.0, 1.0, 1.0, 2.0, 3.0, 1.0, 0.0
+            distance_matrix,
+            array![
+                [0, 1, 2, 1, 1],
+                [1, 0, 1, 2, 2],
+                [2, 1, 0, 2, 3],
+                [1, 2, 2, 0, 1],
+                [1, 2, 3, 1, 0]
             ]
         );
     }
-    */
+    //*/
     #[test]
     fn max_weight_matching1() {
         let weighted_edges = vec![(1, 2, 5.), (2, 3, 11.), (3, 4, 5.)];
