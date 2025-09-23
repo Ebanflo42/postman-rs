@@ -726,33 +726,24 @@ impl<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>> Blossom
             .iter()
             .position(|c| *c == t)
             .unwrap();
-        //println!("AUGMENT BLOSSOM {blossom_id} {vertex} {i}");
         let mut j = i;
         if i % 2 == 1 {
-            ////println!("{}", self.blossom_children[blossom_id].len());
             while j != 0 {
                 j += 1;
                 //println!("{}", j);
                 t = self.blossom_children[blossom_id][j];
                 let p = self.blossom_endpoints[blossom_id][j] as usize;
                 let p_parity = p ^ 1;
-                ////println!("{} {} {}", j, p, i%2);
                 if t >= self.n_vertices {
-                    ////println!("1142");
                     self.augment_blossom(t, endpoints[p], endpoints, matching);
                 }
 
                 j += 1;
                 j = j % self.blossom_children[blossom_id].len();
-                //println!("{}", j);
-                ////println!("{} {} {}", j, p, p_parity);
                 t = self.blossom_children[blossom_id][j];
                 if t >= self.n_vertices {
-                    ////println!("1151");
-                    ////println!("{:?}", endpoints);
                     self.augment_blossom(t, endpoints[p_parity], endpoints, matching);
                 }
-                //println!("BLOSSOM MATCHING ASSIGNMENT {} {} {} {}", endpoints[p], p_parity, endpoints[p_parity], p);
                 matching[endpoints[p]] = p_parity as i64;
                 matching[endpoints[p_parity]] = p as i64;
             }

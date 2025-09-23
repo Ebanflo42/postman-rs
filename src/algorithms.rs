@@ -1,4 +1,5 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
+use std::fmt::Debug;
 
 use ndarray::Array2;
 use num::{Bounded, Num, NumCast, One, Zero};
@@ -316,8 +317,6 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
         result
     };
 
-    let mut indices = Vec::from_iter(0..t.len());
-    indices.sort_by_key(|&i| t[i]);
     let mut metric_closure_edges = Vec::new();
     for i in 0..t.len() {
         for j in 0..i {
@@ -326,7 +325,8 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
     }
 
     let metric_closure_matching = min_weight_max_cardinality_matching(&metric_closure_edges);
-    let mut covered_indices = BTreeSet::new();
+
+    let mut covered_indices = HashSet::new();
     let mut result_edges = BTreeSet::new();
     for (i, &j) in metric_closure_matching.iter().enumerate() {
         if j < 0 {
@@ -335,15 +335,20 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
         if covered_indices.contains(&i) || covered_indices.contains(&(j as usize)) {
             continue;
         }
-        let path: BTreeSet<(usize, usize)> = BTreeSet::from_iter(
-            construct_path(i, j as usize)
-                .iter()
-                .map(|&(i, j)| (t[i], t[j])),
-        );
-        result_edges = result_edges
-            .symmetric_difference(&path)
-            .map(|x| *x)
-            .collect();
+
+        let path = construct_path(t[i], t[j as usize]);
+        // symmetric difference accounting for the fact that
+        // edges are unordered tuples
+        for &edge in path.iter() {
+            if result_edges.contains(&edge) {
+                result_edges.remove(&edge);
+            } else if result_edges.contains(&(edge.1, edge.0)) {
+                result_edges.remove(&(edge.1, edge.0));
+            } else {
+                result_edges.insert(edge);
+            }
+        }
+
         covered_indices.insert(i);
         covered_indices.insert(j as usize);
     }
@@ -351,7 +356,7 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
     result_edges
 }
 
-fn min_weight_t_join2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
+fn min_weight_t_join2<W: Debug + Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
     weighted_edges: &Vec<(usize, usize, W)>,
     t: &Vec<usize>,
     n_vertices: usize
@@ -373,8 +378,6 @@ fn min_weight_t_join2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + I
         result
     };
 
-    let mut indices = Vec::from_iter(0..t.len());
-    indices.sort_by_key(|&i| t[i]);
     let mut metric_closure_edges = Vec::new();
     for i in 0..t.len() {
         for j in 0..i {
@@ -383,7 +386,8 @@ fn min_weight_t_join2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + I
     }
 
     let metric_closure_matching = min_weight_max_cardinality_matching(&metric_closure_edges);
-    let mut covered_indices = BTreeSet::new();
+
+    let mut covered_indices = HashSet::new();
     let mut result_edges = BTreeSet::new();
     for (i, &j) in metric_closure_matching.iter().enumerate() {
         if j < 0 {
@@ -392,15 +396,20 @@ fn min_weight_t_join2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + I
         if covered_indices.contains(&i) || covered_indices.contains(&(j as usize)) {
             continue;
         }
-        let path: BTreeSet<(usize, usize)> = BTreeSet::from_iter(
-            construct_path(i, j as usize)
-                .iter()
-                .map(|&(i, j)| (t[i], t[j])),
-        );
-        result_edges = result_edges
-            .symmetric_difference(&path)
-            .map(|x| *x)
-            .collect();
+
+        let path = construct_path(t[i], t[j as usize]);
+        // symmetric difference accounting for the fact that
+        // edges are unordered tuples
+        for &edge in path.iter() {
+            if result_edges.contains(&edge) {
+                result_edges.remove(&edge);
+            } else if result_edges.contains(&(edge.1, edge.0)) {
+                result_edges.remove(&(edge.1, edge.0));
+            } else {
+                result_edges.insert(edge);
+            }
+        }
+
         covered_indices.insert(i);
         covered_indices.insert(j as usize);
     }
@@ -523,7 +532,7 @@ fn eulerian_tour2<W: Copy>(
     result
 }
 
-pub fn postman<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(weighted_edges: &Vec<(usize, usize, W)>) -> Vec<usize> {
+pub fn postman<W: Debug + Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(weighted_edges: &Vec<(usize, usize, W)>) -> Vec<usize> {
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
         if n_vertices <= edge.0 {
@@ -542,13 +551,13 @@ pub fn postman<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64
     let odd_verts: Vec<usize> = (0..n_vertices)
         .filter(|&v| neighborhoods[v].len() % 2 == 1)
         .collect();
-    //println!("odd_verts {:?}", odd_verts);
+    println!("odd_verts {:?}", odd_verts);
 
     if odd_verts.len() == 0 {
         eulerian_tour2(&weighted_edges, n_vertices, &neighborhoods)
     } else {
         let t_join = min_weight_t_join2(weighted_edges, &odd_verts, n_vertices);
-        //println!("t_join {:?}", Vec::from_iter(t_join.iter()));
+        println!("t_join {:?}", Vec::from_iter(t_join.iter()));
         let new_edges = weighted_edges
             .iter()
             .map(|e| (e.0, e.1, ()))
