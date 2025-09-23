@@ -109,4 +109,118 @@ mod tests {
         println!("{:?}", matching);
         assert_eq!(matching, vec![-1, 3, 4, 1, 2]);
     }
+
+    #[test]
+    fn eulerian_tour1() {
+        let edges = vec![
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 4),
+            (4, 0)
+        ];
+        let tour = eulerian_tour_check(&edges);
+        println!("{:?}", tour);
+        assert_eq!(tour, Some(vec![0, 1, 2, 3, 4, 0]));
+    }
+
+    #[test]
+    fn eulerian_tour2() {
+        let edges = vec![
+            (0, 1),
+            (0, 1),
+            (1, 2),
+            (2, 0),
+            (2, 3),
+            (3, 0),
+            (3, 0)
+        ];
+        let tour = eulerian_tour_check(&edges);
+        println!("{:?}", tour);
+        assert_eq!(tour, None);
+    }
+
+    #[test]
+    fn eulerian_tour3() {
+        let edges = vec![
+            (0, 1),
+            (0, 1),
+            (1, 2),
+            (2, 0),
+            (2, 3),
+            (3, 0),
+            (3, 0),
+            (1, 3),
+            (0, 2)
+        ];
+        let tour = eulerian_tour_check(&edges);
+        println!("{:?}", tour);
+        assert_eq!(tour, Some(vec![0, 1, 0, 2, 1, 3, 0, 3, 2, 0]));
+    }
+
+    #[test]
+    fn eulerian_tour4() {
+        let edges = vec![
+            (0, 1),
+            (0, 1),
+            (1, 2),
+            (2, 0),
+            (2, 3),
+            (3, 0),
+            (3, 0),
+            (0, 4),
+            (1, 4),
+            (2, 4),
+            (3, 4)
+        ];
+        let tour = eulerian_tour_check(&edges);
+        println!("{:?}", tour);
+        assert_eq!(tour, Some(vec![0, 1, 0, 2, 1, 4, 3, 0, 3, 2, 4, 0]));
+    }
+
+    #[test]
+    fn postman1() {
+        let weighted_edges = vec![
+            (0, 1, 5),
+            (0, 2, 3),
+            (0, 6, 6),
+            (1, 2, 4),
+            (1, 3, 6),
+            (2, 3, 6),
+            (2, 4, 5),
+            (2, 5, 3),
+            (2, 6, 3),
+            (3, 4, 2),
+            (4, 5, 4)
+        ];
+        let tour = postman(&weighted_edges);
+        println!("{:?}", tour);
+        assert_eq!(tour, vec![0, 1, 2, 4, 3, 2, 0, 6, 2, 5, 4, 3, 1, 0])
+    }
+
+    #[test]
+    fn postman2() {
+        let weighted_edges = vec![
+            (0, 1, 97),
+            (0, 2, 187),
+            (1, 2, 226),
+            (1, 3, 214),
+            (2, 3, 195),
+            (1, 4, 213),
+            (3, 4, 166),
+            (4, 5, 146),
+            (3, 7, 191),
+            (5, 8, 153),
+            (5, 9, 134),
+            (9, 8, 187),
+            (7, 9, 140),
+            (7, 10, 199),
+            (9, 10, 110),
+            (11, 9, 42)
+
+        ];
+        let tour = postman(&weighted_edges);
+        println!("{:?}", tour);
+    }
+
 }

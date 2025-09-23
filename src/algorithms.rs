@@ -296,11 +296,68 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
         if n_vertices <= edge.0 {
-            n_vertices = edge.0;
+            n_vertices = edge.0 + 1;
         }
         if n_vertices <= edge.1 {
-            n_vertices = edge.1;
+            n_vertices = edge.1 + 1;
         }
+    }
+
+    let (distances, pathtracker) = floyd_warshall2(weighted_edges, n_vertices, false);
+    let construct_path = |i: usize, j: usize| {
+        let mut result = vec![(pathtracker[[i, j]] as usize, j)];
+        while result.last().unwrap().0 != i {
+            let next_step = pathtracker[[i, result.last().unwrap().0]];
+            if next_step < 0 {
+                panic!("{} and {} are disconnected!", i, j);
+            }
+            result.push((next_step as usize, result.last().unwrap().0));
+        }
+        result
+    };
+
+    let mut indices = Vec::from_iter(0..t.len());
+    indices.sort_by_key(|&i| t[i]);
+    let mut metric_closure_edges = Vec::new();
+    for i in 0..t.len() {
+        for j in 0..i {
+            metric_closure_edges.push((i, j, distances[[t[i], t[j]]]));
+        }
+    }
+
+    let metric_closure_matching = min_weight_max_cardinality_matching(&metric_closure_edges);
+    let mut covered_indices = BTreeSet::new();
+    let mut result_edges = BTreeSet::new();
+    for (i, &j) in metric_closure_matching.iter().enumerate() {
+        if j < 0 {
+            panic!("Did not find a perfect matching on the metric closure of `t`");
+        }
+        if covered_indices.contains(&i) || covered_indices.contains(&(j as usize)) {
+            continue;
+        }
+        let path: BTreeSet<(usize, usize)> = BTreeSet::from_iter(
+            construct_path(i, j as usize)
+                .iter()
+                .map(|&(i, j)| (t[i], t[j])),
+        );
+        result_edges = result_edges
+            .symmetric_difference(&path)
+            .map(|x| *x)
+            .collect();
+        covered_indices.insert(i);
+        covered_indices.insert(j as usize);
+    }
+
+    result_edges
+}
+
+fn min_weight_t_join2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
+    weighted_edges: &Vec<(usize, usize, W)>,
+    t: &Vec<usize>,
+    n_vertices: usize
+) -> BTreeSet<(usize, usize)> {
+    if t.len() % 2 != 0 {
+        panic!("Vertex set `t` must have even cardinality!");
     }
 
     let (distances, pathtracker) = floyd_warshall2(weighted_edges, n_vertices, false);
@@ -391,6 +448,52 @@ pub fn eulerian_tour(edges: &Vec<(usize, usize)>) -> Vec<usize> {
     result
 }
 
+pub fn eulerian_tour_check(edges: &Vec<(usize, usize)>) -> Option<Vec<usize>> {
+    let mut n_vertices = 0;
+    for &edge in edges.iter() {
+        if n_vertices <= edge.0 {
+            n_vertices = edge.0 + 1;
+        }
+        if n_vertices <= edge.1 {
+            n_vertices = edge.1 + 1;
+        }
+    }
+
+    let mut neighborhoods: Vec<Vec<usize>> = vec![Vec::new(); n_vertices];
+    for (i, &edge) in edges.iter().enumerate() {
+        neighborhoods[edge.0].push(i);
+        neighborhoods[edge.1].push(i);
+    }
+    for nbrhd in neighborhoods.iter() {
+        //println!("{:?}", nbrhd.clone());
+        if nbrhd.len()%2 == 1 {
+            return None;
+        }
+    }
+
+    let mut result = Vec::new();
+    let mut stack = Vec::with_capacity(n_vertices);
+    stack.push(edges[0].0);
+    while stack.len() > 0 {
+        let v = *stack.last().unwrap();
+        if neighborhoods[v].len() == 0 {
+            result.push(stack.pop().unwrap());
+        } else {
+            let edge_idx = neighborhoods[v].pop().unwrap();
+            let edge = edges[edge_idx];
+            let w = if edge.0 == v { edge.1 } else { edge.0 };
+            let ew = neighborhoods[w]
+                .iter()
+                .position(|i| *i == edge_idx)
+                .unwrap();
+            neighborhoods[w].swap_remove(ew);
+            stack.push(w);
+        }
+    }
+
+    Some(result)
+}
+
 fn eulerian_tour2<W: Copy>(
     edges: &Vec<(usize, usize, W)>,
     n_vertices: usize,
@@ -420,7 +523,7 @@ fn eulerian_tour2<W: Copy>(
     result
 }
 
-pub fn postman(weighted_edges: &Vec<(usize, usize, f64)>) -> Vec<usize> {
+pub fn postman<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(weighted_edges: &Vec<(usize, usize, W)>) -> Vec<usize> {
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
         if n_vertices <= edge.0 {
@@ -439,15 +542,23 @@ pub fn postman(weighted_edges: &Vec<(usize, usize, f64)>) -> Vec<usize> {
     let odd_verts: Vec<usize> = (0..n_vertices)
         .filter(|&v| neighborhoods[v].len() % 2 == 1)
         .collect();
+    //println!("odd_verts {:?}", odd_verts);
 
     if odd_verts.len() == 0 {
         eulerian_tour2(&weighted_edges, n_vertices, &neighborhoods)
     } else {
-        let t_join = min_weight_t_join(weighted_edges, &odd_verts);
+        let t_join = min_weight_t_join2(weighted_edges, &odd_verts, n_vertices);
+        //println!("t_join {:?}", Vec::from_iter(t_join.iter()));
         let new_edges = weighted_edges
             .iter()
             .map(|e| (e.0, e.1, ()))
-            .chain(t_join.iter().map(|e| (e.0, e.1, ())));
-        eulerian_tour2(&new_edges.collect(), n_vertices, &neighborhoods)
+            .chain(t_join.iter().map(|e| (e.0, e.1, ())))
+            .collect();
+        //println!("new_edges {:?}", new_edges);
+        for (i, &new_edge) in t_join.iter().enumerate() {
+            neighborhoods[new_edge.0].push(i + weighted_edges.len());
+            neighborhoods[new_edge.1].push(i + weighted_edges.len());
+        }
+        eulerian_tour2(&new_edges, n_vertices, &neighborhoods)
     }
 }
