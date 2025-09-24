@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use ndarray::Array2;
 use num::{Bounded, Num, NumCast, One, Zero};
 
-use crate::types::BlossomData;
+use crate::blossom_data::BlossomData;
 
 //*
 pub fn floyd_warshall<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast>(

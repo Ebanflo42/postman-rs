@@ -1,5 +1,5 @@
 pub mod algorithms;
-pub mod types;
+pub mod blossom_data;
 
 #[cfg(test)]
 mod tests {
