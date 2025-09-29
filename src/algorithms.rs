@@ -1,8 +1,10 @@
+//#![postman = "doc"]
+
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 
 use ndarray::Array2;
-use num::{Bounded, Num, NumCast, One, Zero};
+use num::{Bounded, Num, NumCast};
 
 use crate::blossom_data::BlossomData;
 
@@ -11,6 +13,20 @@ pub fn floyd_warshall<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast>(
     weighted_edges: &Vec<(usize, usize, W)>,
     directed: bool,
 ) -> (Array2<W>, Array2<i64>) {
+    /// The Floyd-Warshall algorithm.
+    ///
+    /// Takes as input a list of edges of the form (u, v, w) where u and v are vertices
+    /// and w is a weight. Assumes vertices from 0 to the maximum vertex supplied in the
+    /// edges exist.
+    ///
+    /// Input `directed` specifies whether or not the edges are considered as directed or
+    /// undirected.
+    ///
+    /// The user is responsible for ensuring duplicate edges are not given.
+    ///
+    /// Returns `(distances, pathtracker)`, where `distances[[u, v]]` is the length of the
+    /// shortest path between vertices u and v and `pathtracker[[u, v]]` is the first step
+    /// in the shortest path from from v to u.
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
         if n_vertices <= edge.0 {
@@ -62,6 +78,7 @@ fn floyd_warshall2<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast>(
     n_vertices: usize,
     directed: bool,
 ) -> (Array2<W>, Array2<i64>) {
+    /// Same as above but the number of vertices has already been computed.
     let mut distances = Array2::from_shape_fn((n_vertices, n_vertices), |_| {
         W::max_value() / W::from(2).unwrap()
     });
@@ -102,6 +119,18 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
     weighted_edges: &Vec<(usize, usize, W)>,
     max_cardinality: bool,
 ) -> Vec<i64> {
+    /// Edmond's blossom algorithm for maximum weight matchings.
+    ///
+    /// Takes as input a list of edges of the form (u, v, w) where u and v are vertices
+    /// and w is a weight. Assumes vertices from 0 to the maximum vertex supplied in the
+    /// edges exist.
+    ///
+    /// Input `max_cardinality` should be `true` if only maximum cardinality matchings should
+    /// be considered as solutions.
+    ///
+    /// Returns a list of "mates" to each given vertex. Vertex u is matched to mate[u] if
+    /// mate[u] >= 0 and u is unmatched if mate[u] = -1.
+
     // not modified during algorithm iteration
     let mut n_vertices = 0;
     let mut max_weight = W::min_value();
@@ -119,7 +148,11 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
             max_weight = edge.2;
         }
     }
-    max_weight = if max_weight < W::zero() {W::zero()} else {max_weight};
+    max_weight = if max_weight < W::zero() {
+        W::zero()
+    } else {
+        max_weight
+    };
     let mut neighborhood_endpoints = vec![Vec::new(); n_vertices];
     for (i, edge) in weighted_edges.iter().enumerate() {
         neighborhood_endpoints[edge.0].push(2 * i + 1);
@@ -281,8 +314,20 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
     matching
 }
 
-pub fn min_weight_max_cardinality_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(weighted_edges: &Vec<(usize, usize, W)>) -> Vec<i64> {
-    let weighted_edges = weighted_edges.iter().map(|&(i, j, w)| (i, j, W::from(-1).unwrap()*w)).collect();
+pub fn min_weight_max_cardinality_matching<
+    W: Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>,
+>(
+    weighted_edges: &Vec<(usize, usize, W)>,
+) -> Vec<i64> {
+    /// Call Edmond's blossom algorithm above, but to get a minimum weight
+    /// maximum cardinality matching.
+    ///
+    /// Returns a list of "mates" to each given vertex. Vertex u is matched to mate[u] if
+    /// mate[u] >= 0 and u is unmatched if mate[u] = -1.
+    let weighted_edges = weighted_edges
+        .iter()
+        .map(|&(i, j, w)| (i, j, W::from(-1).unwrap() * w))
+        .collect();
     max_weight_matching(&weighted_edges, true)
 }
 
@@ -290,6 +335,17 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
     weighted_edges: &Vec<(usize, usize, W)>,
     t: &Vec<usize>,
 ) -> BTreeSet<(usize, usize)> {
+    /// Solves the minimum weight T-join problem for the weighted graph specified by
+    /// `weighted_edges` and the vertex set specified by `t`.
+    ///
+    /// Throws an error if `t` has odd length, and assumes there are no duplicate
+    /// vertices in `t`.
+    ///
+    /// This function returns a `BTreeSet` of edges of the form (u, v) where u and v
+    /// are `usize`s pointing to specific vertices. BTreeSets are useful here for the
+    /// balance between efficient iteration over the elements and efficient checking
+    /// for membership of an element.
+
     if t.len() % 2 != 0 {
         panic!("Vertex set `t` must have even cardinality!");
     }
@@ -356,11 +412,15 @@ pub fn min_weight_t_join<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast 
     result_edges
 }
 
-fn min_weight_t_join2<W: Debug + Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
+fn min_weight_t_join2<
+    W: Debug + Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>,
+>(
     weighted_edges: &Vec<(usize, usize, W)>,
     t: &Vec<usize>,
-    n_vertices: usize
+    n_vertices: usize,
 ) -> BTreeSet<(usize, usize)> {
+    /// Same as above, but the number of vertices is supplied as an argument.
+
     if t.len() % 2 != 0 {
         panic!("Vertex set `t` must have even cardinality!");
     }
@@ -418,6 +478,12 @@ fn min_weight_t_join2<W: Debug + Bounded + PartialOrd + Copy + Sized + Num + Num
 }
 
 pub fn eulerian_tour(edges: &Vec<(usize, usize)>) -> Vec<usize> {
+    /// Compute an Eulerian tour on the multigraph specified by the given edges.
+    /// Edges are assumed to be undirected.
+    ///
+    /// It is assumed that every vertex has even degree.
+    ///
+    /// The result is returned as a sequence of vertices.
     let mut n_vertices = 0;
     for &edge in edges.iter() {
         if n_vertices <= edge.0 {
@@ -458,6 +524,8 @@ pub fn eulerian_tour(edges: &Vec<(usize, usize)>) -> Vec<usize> {
 }
 
 pub fn eulerian_tour_check(edges: &Vec<(usize, usize)>) -> Option<Vec<usize>> {
+    /// Same as above, but we check that every vertex has even degree.
+
     let mut n_vertices = 0;
     for &edge in edges.iter() {
         if n_vertices <= edge.0 {
@@ -475,7 +543,7 @@ pub fn eulerian_tour_check(edges: &Vec<(usize, usize)>) -> Option<Vec<usize>> {
     }
     for nbrhd in neighborhoods.iter() {
         //println!("{:?}", nbrhd.clone());
-        if nbrhd.len()%2 == 1 {
+        if nbrhd.len() % 2 == 1 {
             return None;
         }
     }
@@ -508,6 +576,7 @@ fn eulerian_tour2<W: Copy>(
     n_vertices: usize,
     neighborhoods: &Vec<Vec<usize>>,
 ) -> Vec<usize> {
+    /// Same as `eulerian_tour` but the number of vertices is provided as an argument.
     let mut neighborhoods = neighborhoods.clone();
     let mut result = Vec::new();
     let mut stack = Vec::with_capacity(n_vertices);
@@ -532,7 +601,14 @@ fn eulerian_tour2<W: Copy>(
     result
 }
 
-pub fn postman<W: Debug + Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(weighted_edges: &Vec<(usize, usize, W)>) -> Vec<usize> {
+pub fn postman<W: Debug + Bounded + PartialOrd + Copy + Sized + Num + NumCast + Into<f64>>(
+    weighted_edges: &Vec<(usize, usize, W)>,
+) -> Vec<usize> {
+    /// Solves the Chinese Postman Problem using a minimum weight T-join
+    /// where T is the set of odd-degree vertices.
+    ///
+    /// Returns the postman tour as a sequence of vertices.
+
     let mut n_vertices = 0;
     for &edge in weighted_edges.iter() {
         if n_vertices <= edge.0 {
