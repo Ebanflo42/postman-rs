@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use ndarray::Array2;
 use num::{Bounded, Num, NumCast, One, Zero};
 
-use crate::blossom_data::BlossomData;
+use crate::blossom_data::{BlossomData, BlossomLabel};
 
 //*
 pub fn floyd_warshall<W: Bounded + PartialOrd + Copy + Sized + Num + NumCast>(
@@ -119,12 +119,16 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
             max_weight = edge.2;
         }
     }
+    // the max_weight is used to initialize dual variables, so clip it to zero
+    // if it is negative, to ensure feasability
     max_weight = if max_weight < W::zero() {W::zero()} else {max_weight};
+    // this table stores indices of edges incident to a given vertex
     let mut neighborhood_endpoints = vec![Vec::new(); n_vertices];
     for (i, edge) in weighted_edges.iter().enumerate() {
         neighborhood_endpoints[edge.0].push(2 * i + 1);
         neighborhood_endpoints[edge.1].push(2 * i);
     }
+    // this table stores the endpoints of given edges
     let mut endpoints = Vec::with_capacity(2 * weighted_edges.len());
     for edge in weighted_edges.iter() {
         endpoints.push(edge.0);
@@ -132,41 +136,56 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
     }
 
     // modified during algorithm iteration
+    // this data structure holds the entire state of the "blossom algorithm"
+    // this essentially amounts to a forest whose leaves are vertices and nodes share
+    // a parent if they are found to coexist in an odd cycle (blossom)
     let mut blossom_data = BlossomData::new(n_vertices, weighted_edges.len(), max_weight);
+    // this array represents the matching, -1 for unmatched vertices,
+    // non-negative integers indicate the index of the matched vertex
     let mut matching = vec![-1i64; n_vertices];
 
+    // at each stage, either one edge is added to the matching
+    // or it is determined that no max cardinality matching exists
+    // or it is determined that we found the maximum weight matching
+    // therefore, the algorithm takes at most n_vertices/2 stages
     for _stage in 0..n_vertices {
+        // re-initialize the blossom data without reallocating
         blossom_data.clear();
+        // this stack will contain the different roots of our search forest
         let mut stack = Vec::with_capacity(n_vertices);
 
-        // prepare to root a search tree at every unmatched vertex
-        // which is not contained in a contracted blossom
         for v in 0..n_vertices {
+            // get the top-level blossom containing vertex v
             let id = blossom_data.blossom_id[v] as usize;
+            // check the label of this blossom
             let label = blossom_data.blossom_labels[id];
-            if matching[v] == -1 && label == 0 {
-                blossom_data.assign_label(&mut stack, v, 1, -1, &endpoints, &matching);
+            // if the vertex is unmatched and the blossom is unlabeled (unmatched)
+            // assign the label "inner" to the vertex and append the children of the
+            // blossom to the stack
+            if matching[v] == -1 && label == BlossomLabel::Unlabeled {
+                blossom_data.assign_label(&mut stack, v, BlossomLabel::Inner, -1, &endpoints, &matching);
             }
         }
 
+        // if we augment the matching during this stage, we will proceed to the next stage
         let mut augmented = false;
-        let mut count = 0;
         loop {
-            count += 1;
-            if count > 10 {
-                break;
-            }
             while stack.len() > 0 && !augmented {
                 let v = stack.pop().unwrap();
 
                 //assert_eq!(blossom_data.blossom_labels[blossom_data.blossom_id[v]], 1);
+                // check all the edges incident to the current vertex v
                 for &p in neighborhood_endpoints[v].iter() {
                     let edge_idx = p / 2;
                     let w = endpoints[p];
+                    // if the two vertices on this edge belong to the same top-level blossom,
+                    // skip it
                     if blossom_data.blossom_id[v] == blossom_data.blossom_id[w] {
                         continue;
                     }
 
+                    // check if the edge is "allowed"
+                    // meaning whether or not its "slack" is zero
                     let mut edge_slack = W::zero();
                     if !blossom_data.allowed_edge[edge_idx] {
                         edge_slack = blossom_data.slack(edge_idx, weighted_edges);
@@ -175,22 +194,32 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
                         }
                     }
 
+                    // check the label of the top-level blossom containing vertex w
                     let label = blossom_data.blossom_labels[blossom_data.blossom_id[w]];
                     if blossom_data.allowed_edge[edge_idx] {
-                        if label == 0 {
+                        // if w hasn't been labeled, assign it label "outer"
+                        // recall that the roots of our search forest are all "inner"
+                        if label == BlossomLabel::Unlabeled {
                             blossom_data.assign_label(
                                 &mut stack,
                                 w,
-                                2,
+                                BlossomLabel::Outer,
                                 (p ^ 1) as i64,
                                 &endpoints,
                                 &matching,
                             );
-                        } else if label == 1 {
+                        } else if label == BlossomLabel::Inner {
+                            // if vertex w is already labeled as "inner"
+                            // we should look for either an augmenting path,
+                            // which is an alternating path which will get us a better matching,
+                            // or a blossom, which is an alternating path that is an odd cycle
                             let root = blossom_data
                                 .check_for_blossom_or_augmenting_path(v, w, &endpoints, &matching);
+                            // root is None if we found an augmented path
                             match root {
                                 None => {
+                                    // root is None if we found an augmenting path
+                                    // then we are done with this stage
                                     blossom_data.augment_matching(
                                         edge_idx,
                                         weighted_edges,
@@ -201,6 +230,9 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
                                     break;
                                 }
                                 Some(r) => {
+                                    // root is a vertex index if we found a blossom
+                                    // the root of the blossom is the vertex which is
+                                    // already matched to some external vertex
                                     blossom_data.add_blossom(
                                         &mut stack,
                                         r,
@@ -212,12 +244,21 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
                                     );
                                 }
                             }
-                        } else if blossom_data.blossom_labels[w] == 0 {
-                            assert_eq!(label, 2);
-                            blossom_data.blossom_labels[w] = 2;
+                        } else if blossom_data.blossom_labels[w] == BlossomLabel::Unlabeled {
+                            // if we find that vertex w is unlabeled, we should have already
+                            // matched the top-level blossom containing it
+                            //assert_eq!(label, BlossomLabel::Outer);
+                            // in that case, label w as outer
+                            blossom_data.blossom_labels[w] = BlossomLabel::Outer;
                             blossom_data.label_endpoints[w] = (p ^ 1) as i64;
                         }
-                    } else if label == 1 {
+                    } else if label == BlossomLabel::Inner {
+                        // if the blossom containing vertex w is already labeled as inner
+                        // we might need to update the "best edge" coming from top-level
+                        // blossom b containing v
+                        // the "best edges" are simply the least-slack edges
+                        // coming out of a vertex/blossom and it is important to
+                        // record them in order to quickly compute dual updates
                         let b = blossom_data.blossom_id[v];
                         if blossom_data.best_edge[b] < 0
                             || edge_slack
@@ -226,7 +267,9 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
                         {
                             blossom_data.best_edge[b] = edge_idx as i64;
                         }
-                    } else if label == 0 {
+                    } else if label == BlossomLabel::Unlabeled {
+                        // additionally, if the blossom containing w is unlabeled
+                        // we may need to update the "best edge" coming from w
                         if blossom_data.best_edge[w] < 0
                             || edge_slack
                                 < blossom_data
@@ -237,34 +280,36 @@ pub fn max_weight_matching<W: Bounded + PartialOrd + Copy + Sized + Num + NumCas
                     }
                 }
             }
+            // if we already augmented the matching, we are done with this stage
             if augmented {
                 break;
             }
 
-            let (delta, best_edge, update_blossom) =
+            let (delta, new_tight_edge, new_tight_blossom) =
                 blossom_data.determine_delta_and_update_mode(weighted_edges, max_cardinality);
             blossom_data.update_dual_soln(delta);
-            let must_break = blossom_data.update_blossom_structure(
+            let optimal_solution_found = blossom_data.update_blossom_structure(
                 &mut stack,
-                best_edge,
-                update_blossom,
+                new_tight_edge,
+                new_tight_blossom,
                 weighted_edges,
                 &endpoints,
                 &matching,
             );
-            if must_break {
+            if optimal_solution_found {
                 break;
             }
         }
 
-        // no more augmenting path can be found
+        // if we end the stage without augmenting the matching then
+        // no more augmenting path can be found and the algorithm is done
         if !augmented {
             break;
         }
 
         // end of this stage, expand all S-blossoms which have dual_soln = 0
         for b in n_vertices..2 * n_vertices {
-            if blossom_data.s_blossom_is_tight(b) {
+            if blossom_data.inner_blossom_is_tight(b) {
                 blossom_data.expand_blossom(&mut stack, b, true, &endpoints, &matching);
             }
         }
