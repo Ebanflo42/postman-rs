@@ -1,8 +1,3 @@
 # postman-rs
-Solving graph optimization problems, including Guan's postman problem, in Rust.
 
-## TODO
-
-Minimum weight matching problem
-
-Minimum weight T-joins and postman problem
+This library provides implementations to several graph problems: including Floyd-Warshall, Minimum weight maximum cardinality matchings, and Eulerian tours, which culminate in a solution to the Chinese Postman Problem.
